@@ -1,0 +1,23 @@
+{
+  "total_episodes": 20,
+  "survival_rates": {
+    "agent_0_survival_rate": 1.0,
+    "agent_1_survival_rate": 1.0,
+    "both_survival_rate": 1.0,
+    "agent_0_survived_count": 20,
+    "agent_1_survived_count": 20,
+    "both_survived_count": 20,
+    "total_episodes": 20
+  },
+  "cooperation_scores": {
+    "average": 0.41500000000000004,
+    "std": 0.0792148975887743,
+    "min": 0.2,
+    "max": 0.5
+  },
+  "resource_statistics": {
+    "average_resources_per_episode": 10.0,
+    "average_agent_0_collected": 5.15,
+    "average_agent_1_collected": 4.85
+  }
+}
