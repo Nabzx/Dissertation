@@ -1,0 +1,2 @@
+This directory will contain generated results and analysis outputs.
+
