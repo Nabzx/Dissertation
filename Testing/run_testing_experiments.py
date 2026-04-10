@@ -27,7 +27,7 @@ from typing import Dict, List, Tuple
 
 import numpy as np
 
-from Code.env.gridworld_env import GridWorldEnv
+from env.gridworld_env import GridWorldEnv
 
 # NOTE:
 # We use absolute imports from the `testing` package so that this script can
