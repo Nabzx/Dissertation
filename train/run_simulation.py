@@ -20,6 +20,7 @@ from env.utils import (
 
 from testing.ppo_agent import PPOAgent
 from testing.rewards import apply_reward_scheme
+from testing.communication import CommunicationLayer
 
 
 def run_episode(
@@ -33,6 +34,7 @@ def run_episode(
     logs_dir: Optional[str] = None,
     results_dir: Optional[str] = None,
     reward_scheme: str = "selfish",
+    use_communication: bool = False,
 ) -> Dict:
     """
     Run a single episode of the simulation.
@@ -48,11 +50,12 @@ def run_episode(
         logs_dir: Base logs directory (e.g., "logs/heuristic_selfish")
         results_dir: Base results directory (e.g., "results/heuristic_selfish")
         reward_scheme: "selfish", "mixed", or "fully_cooperative" (shaping for PPO; logged for all)
+        use_communication: If True, augment PPO observations with a bandwidth-limited message vector
 
     Returns:
         Dict containing episode data
     """
-    observations, infos = env.reset(seed=episode_num)
+    raw_obs, infos = env.reset(seed=episode_num)
 
     agent_type = agent_type.lower()
     reward_scheme = reward_scheme.lower()
@@ -65,6 +68,14 @@ def run_episode(
 
     if agent_type == "ppo" and ppo_agent is None:
         raise ValueError("agent_type='ppo' requires a ppo_agent instance.")
+
+    comm_layer: Optional[CommunicationLayer] = None
+    if agent_type == "ppo" and use_communication:
+        comm_layer = CommunicationLayer(env)
+        comm_layer.reset()
+        obs = comm_layer.build_augment_observation(raw_obs)
+    else:
+        obs = raw_obs
 
     # Reset agents / buffers
     if agent_type == "heuristic":
@@ -97,10 +108,12 @@ def run_episode(
 
         if agent_type == "heuristic":
             for agent_id, agent in agents.items():
-                actions[agent_id] = agent.get_action(observations[agent_id])
+                actions[agent_id] = agent.get_action(obs[agent_id])
         else:
             for agent_id in env.agents:
-                flat_obs = observations[agent_id].flatten()
+                # If communication is enabled, obs[agent_id] is already a flat vector.
+                agent_obs = obs[agent_id]
+                flat_obs = agent_obs if agent_obs.ndim == 1 else agent_obs.flatten()
                 action, log_prob, value = ppo_agent.select_action(flat_obs)
                 actions[agent_id] = int(action)
                 step_log_probs[agent_id] = float(log_prob)
@@ -108,7 +121,7 @@ def run_episode(
                 step_flat_obs[agent_id] = flat_obs
 
         # Step environment
-        observations, rewards, terminations, truncations, infos = env.step(actions)
+        raw_next_obs, rewards, terminations, truncations, infos = env.step(actions)
 
         # Raw collection counts from env (before shaping)
         for agent_id, r in rewards.items():
@@ -136,6 +149,13 @@ def run_episode(
                     done=done,
                     value=step_values[agent_id],
                 )
+
+        # Update communication messages for next step (PPO only)
+        if comm_layer is not None:
+            comm_layer.update_messages_after_step()
+            obs = comm_layer.build_augment_observation(raw_next_obs)
+        else:
+            obs = raw_next_obs
 
         # Store agent positions after step
         for agent_id in env.agents:
@@ -236,6 +256,7 @@ def run_batch_simulation(
     save_heatmaps: bool = True,
     agent_type: str = "heuristic",
     reward_scheme: str = "selfish",
+    use_communication: bool = False,
 ) -> List[Dict]:
     """
     Run a batch of simulation episodes.
@@ -256,7 +277,7 @@ def run_batch_simulation(
 
     agent_type = agent_type.lower()
     reward_scheme = reward_scheme.lower()
-    run_tag = f"{agent_type}_{reward_scheme}"
+    run_tag = f"{agent_type}_{reward_scheme}" + ("_comm" if use_communication else "")
 
     # Per experiment: agent_type + reward_scheme
     logs_dir = f"logs/{run_tag}"
@@ -280,6 +301,9 @@ def run_batch_simulation(
         # Derive obs_dim from the environment to support both full and partial observability.
         obs_shape = env.observation_spaces[env.agents[0]].shape
         obs_dim = int(np.prod(obs_shape))
+        if use_communication:
+            # Communication layer concatenates a fixed-length message vector.
+            obs_dim += int(CommunicationLayer(env).config.max_ints)
         action_dim = 5
         ppo_agent = PPOAgent(obs_dim=obs_dim, n_actions=action_dim)
     else:
@@ -302,6 +326,7 @@ def run_batch_simulation(
             logs_dir=logs_dir,
             results_dir=results_dir,
             reward_scheme=reward_scheme,
+            use_communication=use_communication,
         )
         all_episode_data.append(episode_data)
 

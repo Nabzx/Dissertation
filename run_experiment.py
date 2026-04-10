@@ -39,17 +39,23 @@ def main() -> None:
         default=20,
         help="Number of episodes to run (default: 20)",
     )
+    parser.add_argument(
+        "--communication",
+        action="store_true",
+        help="Enable bandwidth-limited inter-agent communication (default: off)",
+    )
     args = parser.parse_args()
 
     agent_type = args.agent_type.lower()
     reward_scheme = args.reward_scheme.lower()
-    run_tag = f"{agent_type}_{reward_scheme}"
+    run_tag = f"{agent_type}_{reward_scheme}" + ("_comm" if args.communication else "")
 
     print("=" * 60)
     print("Experiment")
     print("=" * 60)
     print(f"  agent_type:     {agent_type}")
     print(f"  reward_scheme:  {reward_scheme}")
+    print(f"  communication:  {args.communication}")
     print(f"  num_episodes:   {args.num_episodes}")
     print(f"  logs/results:   logs/{run_tag}/  |  results/{run_tag}/")
     print("=" * 60)
@@ -59,6 +65,7 @@ def main() -> None:
         num_episodes=args.num_episodes,
         agent_type=agent_type,
         reward_scheme=reward_scheme,
+        use_communication=args.communication,
     )
 
     generate_preliminary_results(
