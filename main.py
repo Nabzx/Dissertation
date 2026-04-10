@@ -23,6 +23,8 @@ def main():
     num_resources = 10
     max_steps = 200
     agent_type = "heuristic"  # change to "ppo" to enable RL
+    reward_scheme = "selfish"  # selfish | mixed | fully_cooperative
+    run_tag = f"{agent_type}_{reward_scheme}"
 
     print("Configuration:")
     print(f"  Grid Size: {grid_size}x{grid_size}")
@@ -30,6 +32,7 @@ def main():
     print(f"  Max Steps per Episode: {max_steps}")
     print(f"  Number of Episodes: {num_episodes}")
     print(f"  Agent Type: {agent_type}")
+    print(f"  Reward Scheme: {reward_scheme}")
     print()
 
     # Run simulations
@@ -43,6 +46,7 @@ def main():
         save_screenshots=True,
         save_heatmaps=True,
         agent_type=agent_type,
+        reward_scheme=reward_scheme,
     )
     print()
 
@@ -50,8 +54,8 @@ def main():
     print("Step 2: Generating preliminary results...")
     print("-" * 60)
     generate_preliminary_results(
-        logs_dir=f"logs/{agent_type}/episodes",
-        results_dir=f"results/{agent_type}",
+        logs_dir=f"logs/{run_tag}/episodes",
+        results_dir=f"results/{run_tag}",
     )
     print()
 
@@ -60,20 +64,20 @@ def main():
     print("=" * 60)
     print()
     print("Generated files:")
-    print(f"  - logs/{agent_type}/episodes/*.json (episode data)")
-    print(f"  - logs/{agent_type}/screenshots/*.png (grid screenshots)")
-    print(f"  - logs/{agent_type}/heatmaps/*.png (per-episode movement heatmaps)")
-    print(f"  - logs/{agent_type}/heatmaps/agent_0_heatmap.png (aggregated heatmap)")
-    print(f"  - logs/{agent_type}/heatmaps/agent_1_heatmap.png (aggregated heatmap)")
-    print(f"  - logs/{agent_type}/resources/*.png (resource distributions)")
-    print(f"  - results/{agent_type}/preliminary_results_summary.json")
-    print(f"  - results/{agent_type}/resource_distribution_heatmap.png")
-    print(f"  - results/{agent_type}/screenshot_montage.png")
-    print(f"  - results/{agent_type}/trajectories/episode_0_trajectory.png")
-    print(f"  - results/{agent_type}/trajectories/episode_1_trajectory.png")
-    print(f"  - results/{agent_type}/reward_curves/reward_curve.png")
+    print(f"  - logs/{run_tag}/episodes/*.json (episode data)")
+    print(f"  - logs/{run_tag}/screenshots/*.png (grid screenshots)")
+    print(f"  - logs/{run_tag}/heatmaps/*.png (per-episode movement heatmaps)")
+    print(f"  - logs/{run_tag}/heatmaps/agent_0_heatmap.png (aggregated heatmap)")
+    print(f"  - logs/{run_tag}/heatmaps/agent_1_heatmap.png (aggregated heatmap)")
+    print(f"  - logs/{run_tag}/resources/*.png (resource distributions)")
+    print(f"  - results/{run_tag}/preliminary_results_summary.json")
+    print(f"  - results/{run_tag}/resource_distribution_heatmap.png")
+    print(f"  - results/{run_tag}/screenshot_montage.png")
+    print(f"  - results/{run_tag}/trajectories/episode_0_trajectory.png")
+    print(f"  - results/{run_tag}/trajectories/episode_1_trajectory.png")
+    print(f"  - results/{run_tag}/reward_curves/reward_curve.png")
     print()
-    print(f"Check the results/{agent_type}/ directory for analysis outputs.")
+    print(f"Check the results/{run_tag}/ directory for analysis outputs.")
 
 
 if __name__ == "__main__":
