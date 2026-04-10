@@ -35,6 +35,7 @@ def run_episode(
     results_dir: Optional[str] = None,
     reward_scheme: str = "selfish",
     use_communication: bool = False,
+    render: bool = False,
 ) -> Dict:
     """
     Run a single episode of the simulation.
@@ -51,6 +52,7 @@ def run_episode(
         results_dir: Base results directory (e.g., "results/heuristic_selfish")
         reward_scheme: "selfish", "mixed", or "fully_cooperative" (shaping for PPO; logged for all)
         use_communication: If True, augment PPO observations with a bandwidth-limited message vector
+        render: If True, capture full-grid states across the episode for animation
 
     Returns:
         Dict containing episode data
@@ -91,7 +93,11 @@ def run_episode(
         "agent_0": [],
         "agent_1": [],
     }
+    grid_sequence: List[np.ndarray] = []
     step_count = 0
+
+    if render:
+        grid_sequence.append(env.grid.copy())
 
     # Store initial positions
     for agent_id in env.agents:
@@ -156,6 +162,9 @@ def run_episode(
             obs = comm_layer.build_augment_observation(raw_next_obs)
         else:
             obs = raw_next_obs
+
+        if render:
+            grid_sequence.append(env.grid.copy())
 
         # Store agent positions after step
         for agent_id in env.agents:
@@ -243,6 +252,9 @@ def run_episode(
     os.makedirs(os.path.dirname(episode_json_path), exist_ok=True)
     with open(episode_json_path, "w") as f:
         json.dump(episode_data, f, indent=2)
+
+    if render:
+        episode_data["grid_sequence"] = grid_sequence
 
     return episode_data
 
@@ -355,4 +367,3 @@ if __name__ == "__main__":
         save_heatmaps=True,
         reward_scheme="selfish",
     )
-
