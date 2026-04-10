@@ -29,6 +29,8 @@ class GridWorldEnv(ParallelEnv):
         grid_size: int = 15,
         num_resources: int = 10,
         max_steps: int = 200,
+        view_size: int = 5,
+        partial_observability: bool = True,
         seed: Optional[int] = None,
     ):
         """
@@ -38,11 +40,16 @@ class GridWorldEnv(ParallelEnv):
             grid_size: Size of the square grid (default: 15)
             num_resources: Number of resources to spawn (default: 10)
             max_steps: Maximum steps per episode (default: 200)
+            view_size: Side length of the local observation window (default: 5)
+            partial_observability: If True, return a local view per agent; if False,
+                return the full grid (original behaviour).
             seed: Random seed for reproducibility
         """
         self.grid_size = grid_size
         self.num_resources = num_resources
         self.max_steps = max_steps
+        self.view_size = view_size
+        self.partial_observability = partial_observability
         self.seed = seed
 
         # Agent IDs
@@ -69,9 +76,12 @@ class GridWorldEnv(ParallelEnv):
         # Action space: 0=stay, 1=up, 2=down, 3=left, 4=right
         self.action_spaces = {agent: Discrete(5) for agent in self.agents}
 
-        # Observation space: 15x15 grid with values 0-3
+        # Observation space:
+        # - full observability: (grid_size, grid_size)
+        # - partial observability: (view_size, view_size)
+        obs_shape = (view_size, view_size) if partial_observability else (grid_size, grid_size)
         self.observation_spaces = {
-            agent: Box(low=0, high=3, shape=(grid_size, grid_size), dtype=np.int32)
+            agent: Box(low=0, high=3, shape=obs_shape, dtype=np.int32)
             for agent in self.agents
         }
 
@@ -259,9 +269,28 @@ class GridWorldEnv(ParallelEnv):
         """
         observations = {}
         for agent in self.agents:
-            # Create a copy of the grid as observation
-            obs = self.grid.copy()
-            observations[agent] = obs
+            if not self.partial_observability:
+                # Original behaviour: each agent sees the full grid.
+                observations[agent] = self.grid.copy()
+                continue
+
+            # Partial observability: local window centered on the agent.
+            # We pad with zeros near edges.
+            size = int(self.view_size)
+            radius = size // 2
+
+            row, col = self.agent_positions[agent]
+            padded = np.pad(self.grid, pad_width=radius, mode="constant", constant_values=0)
+
+            # Convert to padded coordinates
+            pr = row + radius
+            pc = col + radius
+
+            obs = padded[pr - radius : pr + radius + 1, pc - radius : pc + radius + 1]
+
+            # In case an even view_size is accidentally passed, enforce the requested shape
+            # by slicing to (size, size).
+            observations[agent] = obs[:size, :size].copy()
         return observations
 
     def get_heatmaps(self) -> Dict[str, np.ndarray]:

@@ -277,7 +277,9 @@ def run_batch_simulation(
         }
     elif agent_type == "ppo":
         agents = None
-        obs_dim = grid_size * grid_size
+        # Derive obs_dim from the environment to support both full and partial observability.
+        obs_shape = env.observation_spaces[env.agents[0]].shape
+        obs_dim = int(np.prod(obs_shape))
         action_dim = 5
         ppo_agent = PPOAgent(obs_dim=obs_dim, n_actions=action_dim)
     else:
