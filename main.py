@@ -22,12 +22,14 @@ def main():
     grid_size = 15
     num_resources = 10
     max_steps = 200
+    agent_type = "heuristic"  # change to "ppo" to enable RL
 
     print("Configuration:")
     print(f"  Grid Size: {grid_size}x{grid_size}")
     print(f"  Number of Resources: {num_resources}")
     print(f"  Max Steps per Episode: {max_steps}")
     print(f"  Number of Episodes: {num_episodes}")
+    print(f"  Agent Type: {agent_type}")
     print()
 
     # Run simulations
@@ -40,6 +42,7 @@ def main():
         max_steps=max_steps,
         save_screenshots=True,
         save_heatmaps=True,
+        agent_type=agent_type,
     )
     print()
 

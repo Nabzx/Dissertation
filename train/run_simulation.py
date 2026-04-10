@@ -7,7 +7,7 @@ This script runs batches of episodes and collects data for analysis.
 import numpy as np
 import json
 import os
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from env.gridworld_env import GridWorldEnv
 from agents.heuristic_agent import HeuristicAgent
@@ -18,13 +18,17 @@ from env.utils import (
     save_trajectory_plot,
 )
 
+from testing.ppo_agent import PPOAgent
+
 
 def run_episode(
     env: GridWorldEnv,
-    agents: Dict[str, HeuristicAgent],
+    agents: Optional[Dict[str, HeuristicAgent]],
     episode_num: int,
     save_screenshots: bool = True,
     save_heatmaps: bool = True,
+    agent_type: str = "heuristic",
+    ppo_agent: Optional[PPOAgent] = None,
 ) -> Dict:
     """
     Run a single episode of the simulation.
@@ -35,15 +39,26 @@ def run_episode(
         episode_num: Episode number for logging
         save_screenshots: Whether to save grid screenshots
         save_heatmaps: Whether to save heatmap visualizations
+        agent_type: "heuristic" (default) or "ppo"
+        ppo_agent: Shared PPOAgent instance when agent_type == "ppo"
 
     Returns:
         Dict containing episode data
     """
     observations, infos = env.reset(seed=episode_num)
 
-    # Reset agents
-    for agent in agents.values():
-        agent.reset()
+    agent_type = agent_type.lower()
+
+    if agent_type == "ppo" and ppo_agent is None:
+        raise ValueError("agent_type='ppo' requires a ppo_agent instance.")
+
+    # Reset agents / buffers
+    if agent_type == "heuristic":
+        for agent in agents.values():
+            agent.reset()
+    else:
+        # Keep PPO updates episode-scoped for simplicity.
+        ppo_agent.reset_buffer()
 
     # Store episode trajectory and agent positions
     trajectory = []
@@ -54,7 +69,7 @@ def run_episode(
     step_count = 0
 
     # Store initial positions
-    for agent_id in agents.keys():
+    for agent_id in env.agents:
         pos = env.agent_positions[agent_id]
         agent_trajectories[agent_id].append(pos)
 
@@ -62,14 +77,40 @@ def run_episode(
     while True:
         # Get actions from agents
         actions = {}
-        for agent_id, agent in agents.items():
-            actions[agent_id] = agent.get_action(observations[agent_id])
+        step_log_probs: Dict[str, float] = {}
+        step_values: Dict[str, float] = {}
+        step_flat_obs: Dict[str, np.ndarray] = {}
+
+        if agent_type == "heuristic":
+            for agent_id, agent in agents.items():
+                actions[agent_id] = agent.get_action(observations[agent_id])
+        else:
+            for agent_id in env.agents:
+                flat_obs = observations[agent_id].flatten()
+                action, log_prob, value = ppo_agent.select_action(flat_obs)
+                actions[agent_id] = int(action)
+                step_log_probs[agent_id] = float(log_prob)
+                step_values[agent_id] = float(value)
+                step_flat_obs[agent_id] = flat_obs
 
         # Step environment
         observations, rewards, terminations, truncations, infos = env.step(actions)
 
+        # Store PPO transitions (after env.step, using reward + done).
+        if agent_type == "ppo":
+            for agent_id in env.agents:
+                done = bool(terminations[agent_id] or truncations[agent_id])
+                ppo_agent.store_transition(
+                    obs=step_flat_obs[agent_id],
+                    action=actions[agent_id],
+                    log_prob=step_log_probs[agent_id],
+                    reward=float(rewards[agent_id]),
+                    done=done,
+                    value=step_values[agent_id],
+                )
+
         # Store agent positions after step
-        for agent_id in agents.keys():
+        for agent_id in env.agents:
             pos = env.agent_positions[agent_id]
             agent_trajectories[agent_id].append(pos)
 
@@ -87,6 +128,14 @@ def run_episode(
         # Check if episode is done
         if all(terminations.values()) or all(truncations.values()):
             break
+
+    # PPO update at the end of the episode.
+    if agent_type == "ppo":
+        try:
+            ppo_agent.update(last_value=0.0, last_done=True)
+        except RuntimeError as exc:
+            # PyTorch missing or other training-time issue. Keep simulation running.
+            print(f"[ppo] Update skipped: {exc}")
 
     # Collect episode data
     heatmaps = env.get_heatmaps()
@@ -153,6 +202,7 @@ def run_batch_simulation(
     max_steps: int = 200,
     save_screenshots: bool = True,
     save_heatmaps: bool = True,
+    agent_type: str = "heuristic",
 ) -> List[Dict]:
     """
     Run a batch of simulation episodes.
@@ -171,11 +221,22 @@ def run_batch_simulation(
     # Create environment
     env = GridWorldEnv(grid_size=grid_size, num_resources=num_resources, max_steps=max_steps)
 
-    # Create agents
-    agents = {
-        "agent_0": HeuristicAgent("agent_0"),
-        "agent_1": HeuristicAgent("agent_1"),
-    }
+    agent_type = agent_type.lower()
+
+    # Create agents (heuristic) or PPO policy (shared)
+    ppo_agent: Optional[PPOAgent] = None
+    if agent_type == "heuristic":
+        agents: Optional[Dict[str, HeuristicAgent]] = {
+            "agent_0": HeuristicAgent("agent_0"),
+            "agent_1": HeuristicAgent("agent_1"),
+        }
+    elif agent_type == "ppo":
+        agents = None
+        obs_dim = grid_size * grid_size
+        action_dim = 5
+        ppo_agent = PPOAgent(obs_dim=obs_dim, n_actions=action_dim)
+    else:
+        raise ValueError(f"Unknown agent_type '{agent_type}'. Expected 'heuristic' or 'ppo'.")
 
     # Run episodes
     all_episode_data = []
@@ -189,6 +250,8 @@ def run_batch_simulation(
             episode_num,
             save_screenshots=save_screenshots,
             save_heatmaps=save_heatmaps,
+            agent_type=agent_type,
+            ppo_agent=ppo_agent,
         )
         all_episode_data.append(episode_data)
 
