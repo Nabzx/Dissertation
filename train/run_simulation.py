@@ -29,6 +29,8 @@ def run_episode(
     save_heatmaps: bool = True,
     agent_type: str = "heuristic",
     ppo_agent: Optional[PPOAgent] = None,
+    logs_dir: Optional[str] = None,
+    results_dir: Optional[str] = None,
 ) -> Dict:
     """
     Run a single episode of the simulation.
@@ -41,6 +43,8 @@ def run_episode(
         save_heatmaps: Whether to save heatmap visualizations
         agent_type: "heuristic" (default) or "ppo"
         ppo_agent: Shared PPOAgent instance when agent_type == "ppo"
+        logs_dir: Base logs directory (e.g., "logs/heuristic")
+        results_dir: Base results directory (e.g., "results/heuristic")
 
     Returns:
         Dict containing episode data
@@ -48,6 +52,8 @@ def run_episode(
     observations, infos = env.reset(seed=episode_num)
 
     agent_type = agent_type.lower()
+    logs_dir = logs_dir or "logs"
+    results_dir = results_dir or "results"
 
     if agent_type == "ppo" and ppo_agent is None:
         raise ValueError("agent_type='ppo' requires a ppo_agent instance.")
@@ -145,22 +151,22 @@ def run_episode(
 
     # Save screenshots
     if save_screenshots:
-        screenshot_path = f"logs/screenshots/episode_{episode_num:04d}_final.png"
+        screenshot_path = os.path.join(logs_dir, "screenshots", f"episode_{episode_num:04d}_final.png")
         save_grid_screenshot(final_grid, screenshot_path, title=f"Episode {episode_num} - Final State")
 
     # Save heatmaps
     if save_heatmaps:
         for agent_id, heatmap in heatmaps.items():
-            heatmap_path = f"logs/heatmaps/episode_{episode_num:04d}_{agent_id}.png"
+            heatmap_path = os.path.join(logs_dir, "heatmaps", f"episode_{episode_num:04d}_{agent_id}.png")
             save_heatmap(heatmap, heatmap_path, agent_id, title=f"Episode {episode_num} - {agent_id}")
 
     # Save resource distribution
-    resource_dist_path = f"logs/resources/episode_{episode_num:04d}_distribution.png"
+    resource_dist_path = os.path.join(logs_dir, "resources", f"episode_{episode_num:04d}_distribution.png")
     plot_resource_distribution(initial_resources, resource_dist_path, grid_size=env.grid_size)
 
     # Save trajectory plots for episodes 0 and 1
     if episode_num in [0, 1]:
-        trajectory_path = f"results/trajectories/episode_{episode_num}_trajectory.png"
+        trajectory_path = os.path.join(results_dir, "trajectories", f"episode_{episode_num}_trajectory.png")
         save_trajectory_plot(agent_trajectories, env.grid_size, trajectory_path)
 
     # Create episode summary
@@ -173,9 +179,10 @@ def run_episode(
         "agent_0_survived": resources_collected["agent_0"] >= 1,
         "agent_1_survived": resources_collected["agent_1"] >= 1,
         "both_survived": resources_collected["agent_0"] >= 1 and resources_collected["agent_1"] >= 1,
-        "screenshot_path": f"logs/screenshots/episode_{episode_num:04d}_final.png" if save_screenshots else None,
+        "screenshot_path": screenshot_path if save_screenshots else None,
         "heatmap_paths": {
-            agent_id: f"logs/heatmaps/episode_{episode_num:04d}_{agent_id}.png" for agent_id in heatmaps.keys()
+            agent_id: os.path.join(logs_dir, "heatmaps", f"episode_{episode_num:04d}_{agent_id}.png")
+            for agent_id in heatmaps.keys()
         }
         if save_heatmaps
         else {},
@@ -187,7 +194,7 @@ def run_episode(
     }
 
     # Save episode JSON
-    episode_json_path = f"logs/episodes/episode_{episode_num:04d}.json"
+    episode_json_path = os.path.join(logs_dir, "episodes", f"episode_{episode_num:04d}.json")
     os.makedirs(os.path.dirname(episode_json_path), exist_ok=True)
     with open(episode_json_path, "w") as f:
         json.dump(episode_data, f, indent=2)
@@ -223,6 +230,16 @@ def run_batch_simulation(
 
     agent_type = agent_type.lower()
 
+    # Agent-type scoped output directories
+    logs_dir = f"logs/{agent_type}"
+    results_dir = f"results/{agent_type}"
+    os.makedirs(os.path.join(logs_dir, "episodes"), exist_ok=True)
+    os.makedirs(os.path.join(logs_dir, "screenshots"), exist_ok=True)
+    os.makedirs(os.path.join(logs_dir, "heatmaps"), exist_ok=True)
+    os.makedirs(os.path.join(logs_dir, "resources"), exist_ok=True)
+    os.makedirs(os.path.join(results_dir, "trajectories"), exist_ok=True)
+    os.makedirs(os.path.join(results_dir, "reward_curves"), exist_ok=True)
+
     # Create agents (heuristic) or PPO policy (shared)
     ppo_agent: Optional[PPOAgent] = None
     if agent_type == "heuristic":
@@ -252,6 +269,8 @@ def run_batch_simulation(
             save_heatmaps=save_heatmaps,
             agent_type=agent_type,
             ppo_agent=ppo_agent,
+            logs_dir=logs_dir,
+            results_dir=results_dir,
         )
         all_episode_data.append(episode_data)
 
@@ -264,7 +283,7 @@ def run_batch_simulation(
         )
 
     print(f"\nCompleted {num_episodes} episodes!")
-    print("Results saved to logs/ directory")
+    print(f"Results saved to {logs_dir}/ and {results_dir}/")
 
     return all_episode_data
 

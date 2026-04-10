@@ -22,7 +22,7 @@ def main():
     grid_size = 15
     num_resources = 10
     max_steps = 200
-    agent_type = "ppo"  # change to "ppo" to enable RL
+    agent_type = "heuristic"  # change to "ppo" to enable RL
 
     print("Configuration:")
     print(f"  Grid Size: {grid_size}x{grid_size}")
@@ -50,8 +50,8 @@ def main():
     print("Step 2: Generating preliminary results...")
     print("-" * 60)
     generate_preliminary_results(
-        logs_dir="logs/episodes",
-        results_dir="results",
+        logs_dir=f"logs/{agent_type}/episodes",
+        results_dir=f"results/{agent_type}",
     )
     print()
 
@@ -60,20 +60,20 @@ def main():
     print("=" * 60)
     print()
     print("Generated files:")
-    print("  - logs/episodes/*.json (episode data)")
-    print("  - logs/screenshots/*.png (grid screenshots)")
-    print("  - logs/heatmaps/*.png (per-episode movement heatmaps)")
-    print("  - logs/heatmaps/agent_0_heatmap.png (aggregated heatmap)")
-    print("  - logs/heatmaps/agent_1_heatmap.png (aggregated heatmap)")
-    print("  - logs/resources/*.png (resource distributions)")
-    print("  - results/preliminary_results_summary.json")
-    print("  - results/resource_distribution_heatmap.png")
-    print("  - results/screenshot_montage.png")
-    print("  - results/trajectories/episode_0_trajectory.png")
-    print("  - results/trajectories/episode_1_trajectory.png")
-    print("  - results/reward_curves/reward_curve.png")
+    print(f"  - logs/{agent_type}/episodes/*.json (episode data)")
+    print(f"  - logs/{agent_type}/screenshots/*.png (grid screenshots)")
+    print(f"  - logs/{agent_type}/heatmaps/*.png (per-episode movement heatmaps)")
+    print(f"  - logs/{agent_type}/heatmaps/agent_0_heatmap.png (aggregated heatmap)")
+    print(f"  - logs/{agent_type}/heatmaps/agent_1_heatmap.png (aggregated heatmap)")
+    print(f"  - logs/{agent_type}/resources/*.png (resource distributions)")
+    print(f"  - results/{agent_type}/preliminary_results_summary.json")
+    print(f"  - results/{agent_type}/resource_distribution_heatmap.png")
+    print(f"  - results/{agent_type}/screenshot_montage.png")
+    print(f"  - results/{agent_type}/trajectories/episode_0_trajectory.png")
+    print(f"  - results/{agent_type}/trajectories/episode_1_trajectory.png")
+    print(f"  - results/{agent_type}/reward_curves/reward_curve.png")
     print()
-    print("Check the results/ directory for analysis outputs.")
+    print(f"Check the results/{agent_type}/ directory for analysis outputs.")
 
 
 if __name__ == "__main__":

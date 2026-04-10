@@ -268,8 +268,11 @@ def generate_preliminary_results(logs_dir: str = "logs/episodes", results_dir: s
     # Aggregate and save movement heatmaps
     print("Aggregating movement heatmaps...")
     aggregated_heatmaps = aggregate_heatmaps(episode_data, grid_size=15)
+
+    # If logs_dir is ".../episodes", write aggregated heatmaps alongside it in ".../heatmaps".
+    logs_base_dir = os.path.dirname(logs_dir.rstrip("/\\"))
     for agent_id, heatmap in aggregated_heatmaps.items():
-        heatmap_path = os.path.join("logs", "heatmaps", f"{agent_id}_heatmap.png")
+        heatmap_path = os.path.join(logs_base_dir, "heatmaps", f"{agent_id}_heatmap.png")
         save_movement_heatmap(
             heatmap,
             heatmap_path,
@@ -347,7 +350,7 @@ def generate_preliminary_results(logs_dir: str = "logs/episodes", results_dir: s
     print("  - resource_distribution_heatmap.png")
     print("  - screenshot_montage.png")
     print("  - reward_curves/reward_curve.png")
-    print("\nAggregated heatmaps saved to logs/heatmaps/")
+    print(f"\nAggregated heatmaps saved to {os.path.join(logs_base_dir, 'heatmaps')}/")
     print("  - agent_0_heatmap.png")
     print("  - agent_1_heatmap.png")
     print("=" * 60)
