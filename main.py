@@ -22,7 +22,7 @@ def main():
     grid_size = 15
     num_resources = 10
     max_steps = 200
-    agent_type = "heuristic"  # change to "ppo" to enable RL
+    agent_type = "ppo"  # change to "ppo" to enable RL
 
     print("Configuration:")
     print(f"  Grid Size: {grid_size}x{grid_size}")
