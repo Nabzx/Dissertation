@@ -4,12 +4,6 @@ Main entry point for the multi-agent resource-scarcity simulation.
 This script runs simulations and generates preliminary results.
 """
 
-import os
-import sys
-
-# Add current directory to path
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-
 from train.run_simulation import run_batch_simulation
 from train.generate_preliminary_results import generate_preliminary_results
 
@@ -18,49 +12,49 @@ def main():
     """
     Main function to run simulations and generate results.
     """
-    print("="*60)
+    print("=" * 60)
     print("Multi-Agent Resource-Scarcity Simulation")
-    print("="*60)
+    print("=" * 60)
     print()
-    
+
     # Configuration
     num_episodes = 20
     grid_size = 15
     num_resources = 10
     max_steps = 200
-    
+
     print("Configuration:")
     print(f"  Grid Size: {grid_size}x{grid_size}")
     print(f"  Number of Resources: {num_resources}")
     print(f"  Max Steps per Episode: {max_steps}")
     print(f"  Number of Episodes: {num_episodes}")
     print()
-    
+
     # Run simulations
     print("Step 1: Running simulations...")
-    print("-"*60)
+    print("-" * 60)
     episode_data = run_batch_simulation(
         num_episodes=num_episodes,
         grid_size=grid_size,
         num_resources=num_resources,
         max_steps=max_steps,
         save_screenshots=True,
-        save_heatmaps=True
+        save_heatmaps=True,
     )
     print()
-    
+
     # Generate preliminary results
     print("Step 2: Generating preliminary results...")
-    print("-"*60)
+    print("-" * 60)
     generate_preliminary_results(
         logs_dir="logs/episodes",
-        results_dir="results"
+        results_dir="results",
     )
     print()
-    
-    print("="*60)
+
+    print("=" * 60)
     print("Simulation Complete!")
-    print("="*60)
+    print("=" * 60)
     print()
     print("Generated files:")
     print("  - logs/episodes/*.json (episode data)")
