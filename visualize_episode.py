@@ -13,7 +13,12 @@ from matplotlib import animation
 from matplotlib.colors import BoundaryNorm, ListedColormap
 
 
-def animate_episode(grid_sequence: List[np.ndarray], save_path: Optional[str] = None, interval: int = 200):
+def animate_episode(
+    grid_sequence: List[np.ndarray],
+    save_path: Optional[str] = None,
+    interval: int = 200,
+    block: bool = True,
+):
     """
     Animate a sequence of grid states for one episode.
 
@@ -21,6 +26,7 @@ def animate_episode(grid_sequence: List[np.ndarray], save_path: Optional[str] = 
         grid_sequence: List of 2D numpy arrays representing grid states over time
         save_path: Optional output path for a GIF
         interval: Delay between frames in milliseconds
+        block: Whether to block execution while the animation window is shown
 
     Returns:
         The matplotlib animation object
@@ -62,5 +68,10 @@ def animate_episode(grid_sequence: List[np.ndarray], save_path: Optional[str] = 
             os.makedirs(save_dir, exist_ok=True)
         ani.save(save_path, writer="pillow")
 
-    plt.show()
+    plt.show(block=block)
+    if not block:
+        duration_seconds = max(len(grid_sequence) * interval / 1000.0, 0.1)
+        plt.pause(duration_seconds)
+        plt.close(fig)
+
     return ani

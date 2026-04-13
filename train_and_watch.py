@@ -63,6 +63,7 @@ def train_and_watch(
     recent_resources: List[int] = []
 
     for episode in range(num_episodes):
+        print(f"Starting episode {episode}")
         should_render = render_every > 0 and episode % render_every == 0
 
         episode_data = run_episode(
@@ -96,7 +97,12 @@ def train_and_watch(
             save_path = None
             if save_gif_dir is not None:
                 save_path = f"{save_gif_dir}/episode_{episode + 1:04d}.gif"
-            animate_episode(episode_data["grid_sequence"], save_path=save_path, interval=render_interval)
+            animate_episode(
+                episode_data["grid_sequence"],
+                save_path=save_path,
+                interval=render_interval,
+                block=False,
+            )
 
         if (episode + 1) % 10 == 0:
             avg_reward = float(np.mean(recent_rewards[-10:]))
