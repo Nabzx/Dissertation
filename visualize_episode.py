@@ -8,7 +8,7 @@ import os
 from typing import List, Optional
 
 import matplotlib.pyplot as plt
-import numpy as np
+import numpy as np 
 from matplotlib import animation
 from matplotlib.colors import BoundaryNorm, ListedColormap
 
