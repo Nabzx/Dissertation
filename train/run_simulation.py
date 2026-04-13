@@ -29,6 +29,7 @@ def run_episode(
     episode_num: int,
     save_screenshots: bool = True,
     save_heatmaps: bool = True,
+    save_artifacts: bool = True,
     agent_type: str = "heuristic",
     ppo_agent: Optional[PPOAgent] = None,
     logs_dir: Optional[str] = None,
@@ -46,6 +47,7 @@ def run_episode(
         episode_num: Episode number for logging
         save_screenshots: Whether to save grid screenshots
         save_heatmaps: Whether to save heatmap visualizations
+        save_artifacts: Whether to save plots and JSON outputs for the episode
         agent_type: "heuristic" (default) or "ppo"
         ppo_agent: Shared PPOAgent instance when agent_type == "ppo"
         logs_dir: Base logs directory (e.g., "logs/heuristic_selfish")
@@ -202,22 +204,27 @@ def run_episode(
     initial_resources = env.get_initial_resource_positions()
 
     # Save screenshots
-    if save_screenshots:
+    screenshot_path = None
+    if save_artifacts and save_screenshots:
         screenshot_path = os.path.join(logs_dir, "screenshots", f"episode_{episode_num:04d}_final.png")
         save_grid_screenshot(final_grid, screenshot_path, title=f"Episode {episode_num} - Final State")
 
     # Save heatmaps
-    if save_heatmaps:
+    heatmap_paths = {}
+    if save_artifacts and save_heatmaps:
         for agent_id, heatmap in heatmaps.items():
             heatmap_path = os.path.join(logs_dir, "heatmaps", f"episode_{episode_num:04d}_{agent_id}.png")
             save_heatmap(heatmap, heatmap_path, agent_id, title=f"Episode {episode_num} - {agent_id}")
+            heatmap_paths[agent_id] = heatmap_path
 
     # Save resource distribution
-    resource_dist_path = os.path.join(logs_dir, "resources", f"episode_{episode_num:04d}_distribution.png")
-    plot_resource_distribution(initial_resources, resource_dist_path, grid_size=env.grid_size)
+    resource_dist_path = None
+    if save_artifacts:
+        resource_dist_path = os.path.join(logs_dir, "resources", f"episode_{episode_num:04d}_distribution.png")
+        plot_resource_distribution(initial_resources, resource_dist_path, grid_size=env.grid_size)
 
     # Save trajectory plots for episodes 0 and 1
-    if episode_num in [0, 1]:
+    if save_artifacts and episode_num in [0, 1]:
         trajectory_path = os.path.join(results_dir, "trajectories", f"episode_{episode_num}_trajectory.png")
         save_trajectory_plot(agent_trajectories, env.grid_size, trajectory_path)
 
@@ -233,13 +240,8 @@ def run_episode(
         "agent_0_survived": resources_collected["agent_0"] >= 1,
         "agent_1_survived": resources_collected["agent_1"] >= 1,
         "both_survived": resources_collected["agent_0"] >= 1 and resources_collected["agent_1"] >= 1,
-        "screenshot_path": screenshot_path if save_screenshots else None,
-        "heatmap_paths": {
-            agent_id: os.path.join(logs_dir, "heatmaps", f"episode_{episode_num:04d}_{agent_id}.png")
-            for agent_id in heatmaps.keys()
-        }
-        if save_heatmaps
-        else {},
+        "screenshot_path": screenshot_path,
+        "heatmap_paths": heatmap_paths,
         "resource_dist_path": resource_dist_path,
         # Store heatmaps as lists for JSON serialisation
         "heatmaps": {agent_id: heatmap.tolist() for agent_id, heatmap in heatmaps.items()},
@@ -248,10 +250,11 @@ def run_episode(
     }
 
     # Save episode JSON
-    episode_json_path = os.path.join(logs_dir, "episodes", f"episode_{episode_num:04d}.json")
-    os.makedirs(os.path.dirname(episode_json_path), exist_ok=True)
-    with open(episode_json_path, "w") as f:
-        json.dump(episode_data, f, indent=2)
+    if save_artifacts:
+        episode_json_path = os.path.join(logs_dir, "episodes", f"episode_{episode_num:04d}.json")
+        os.makedirs(os.path.dirname(episode_json_path), exist_ok=True)
+        with open(episode_json_path, "w") as f:
+            json.dump(episode_data, f, indent=2)
 
     if render:
         episode_data["grid_sequence"] = grid_sequence
