@@ -8,4 +8,4 @@ from live_renderer import run_live_training
 
 
 if __name__ == "__main__":
-    run_live_training(num_episodes=50, render_delay=0.01)
+    run_live_training(num_episodes=1000, render_every=50, render_delay=0.001, fast_mode=True)

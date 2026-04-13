@@ -19,8 +19,8 @@ from visualize_episode import animate_episode
 
 
 def train_and_watch(
-    num_episodes: int = 1000,
-    render_every: int = 50,
+    num_episodes: int = 5000,
+    render_every: int = 100,
     reward_scheme: str = "selfish",
     use_communication: bool = False,
     grid_size: int = 15,

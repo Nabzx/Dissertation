@@ -22,6 +22,11 @@ class LiveEpisodeRenderer:
     """
 
     def __init__(self, initial_grid: np.ndarray, num_episodes: int, max_possible_reward: float):
+        self.smoothing_window = 50
+        self.plot_update_every = 10
+        self.plot_downsample = 5
+        self.max_possible_reward = max_possible_reward
+
         cmap = ListedColormap(["white", "green", "blue", "red"])
         norm = BoundaryNorm([-0.5, 0.5, 1.5, 2.5, 3.5], cmap.N)
 
@@ -62,20 +67,37 @@ class LiveEpisodeRenderer:
         self.policy_losses: List[float] = []
         self.value_losses: List[float] = []
         self.entropy_values: List[float] = []
-        self.raw_line, = self.ax_plot.plot([], [], color="tab:blue", label="Reward (raw)")
-        self.smooth_line, = self.ax_plot.plot([], [], color="tab:orange", label="Moving Avg (20)")
-        self.resource_line, = self.ax_plot.plot([], [], color="tab:green", label="Resources collected")
+        self.reward_line, = self.ax_plot.plot([], [], color="tab:blue", linewidth=2, label="Reward Avg (50)")
+        self.resource_line, = self.ax_plot.plot(
+            [],
+            [],
+            color="tab:green",
+            linewidth=2,
+            label="Resources Avg (50)",
+        )
         self.ax_plot.set_xlim(0, max(1, num_episodes))
         self.ax_plot.set_ylim(0, max(1.0, max_possible_reward))
         self.ax_plot.set_title("Learning Progress")
         self.ax_plot.set_xlabel("Episode")
-        self.ax_plot.set_ylabel("Reward")
+        self.ax_plot.set_ylabel("Smoothed Value")
         self.ax_plot.grid(True, alpha=0.3)
         self.ax_plot.legend(loc="upper left")
 
-        self.policy_line, = self.ax_ppo.plot([], [], color="tab:red", label="Policy Loss (PPO)")
+        self.policy_line, = self.ax_ppo.plot(
+            [],
+            [],
+            color="tab:red",
+            linewidth=2,
+            label="Policy Loss (PPO)",
+        )
         self.ax_entropy = self.ax_ppo.twinx()
-        self.entropy_line, = self.ax_entropy.plot([], [], color="tab:purple", label="Entropy (Exploration)")
+        self.entropy_line, = self.ax_entropy.plot(
+            [],
+            [],
+            color="tab:purple",
+            linewidth=2,
+            label="Entropy (Exploration)",
+        )
         self.ax_ppo.set_xlim(0, max(1, num_episodes))
         self.ax_ppo.set_title("PPO Training Dynamics")
         self.ax_ppo.set_xlabel("Episode")
@@ -84,6 +106,8 @@ class LiveEpisodeRenderer:
         self.ax_ppo.grid(True, alpha=0.3)
         self.ax_entropy.set_ylabel("Entropy (Exploration)", color="tab:purple")
         self.ax_entropy.tick_params(axis="y", labelcolor="tab:purple")
+        self.ax_ppo.set_ylim(-1.0, 2.0)
+        self.ax_entropy.set_ylim(0.0, 2.0)
         ppo_handles = [self.policy_line, self.entropy_line]
         self.ax_ppo.legend(ppo_handles, [line.get_label() for line in ppo_handles], loc="upper right")
 
@@ -98,34 +122,47 @@ class LiveEpisodeRenderer:
     def update_learning_plot(self, total_reward: float, total_resources: float) -> None:
         self.episode_rewards.append(float(total_reward))
         self.episode_resources.append(float(total_resources))
+        if len(self.episode_rewards) % self.plot_update_every != 0:
+            return
+
         x_vals = list(range(len(self.episode_rewards)))
-        self.raw_line.set_data(x_vals, self.episode_rewards)
-        self.resource_line.set_data(x_vals, self.episode_resources)
+        reward_smoothed = self._moving_average(self.episode_rewards, self.smoothing_window)
+        resource_smoothed = self._moving_average(self.episode_resources, self.smoothing_window)
 
-        window = 20
-        if self.episode_rewards:
-            smoothed = [
-                float(np.mean(self.episode_rewards[max(0, idx - window + 1) : idx + 1]))
-                for idx in range(len(self.episode_rewards))
-            ]
-            self.smooth_line.set_data(x_vals, smoothed)
+        plot_x = x_vals[:: self.plot_downsample] or x_vals[-1:]
+        plot_reward = reward_smoothed[:: self.plot_downsample] or reward_smoothed[-1:]
+        plot_resources = resource_smoothed[:: self.plot_downsample] or resource_smoothed[-1:]
 
-        self.ax_plot.relim()
-        self.ax_plot.autoscale_view()
+        self.reward_line.set_data(plot_x, plot_reward)
+        self.resource_line.set_data(plot_x, plot_resources)
 
     def update_ppo_plot(self, ppo_metrics: Dict[str, float]) -> None:
         self.policy_losses.append(float(ppo_metrics.get("policy_loss", 0.0)))
         self.value_losses.append(float(ppo_metrics.get("value_loss", 0.0)))
         self.entropy_values.append(float(ppo_metrics.get("entropy", 0.0)))
+        if len(self.policy_losses) % self.plot_update_every != 0:
+            return
 
         x_vals = list(range(len(self.policy_losses)))
-        self.policy_line.set_data(x_vals, self.policy_losses)
-        self.entropy_line.set_data(x_vals, self.entropy_values)
+        policy_smoothed = self._moving_average(self.policy_losses, self.smoothing_window)
+        entropy_smoothed = self._moving_average(self.entropy_values, self.smoothing_window)
 
-        self.ax_ppo.relim()
-        self.ax_ppo.autoscale_view()
-        self.ax_entropy.relim()
-        self.ax_entropy.autoscale_view()
+        plot_x = x_vals[:: self.plot_downsample] or x_vals[-1:]
+        plot_policy = policy_smoothed[:: self.plot_downsample] or policy_smoothed[-1:]
+        plot_entropy = entropy_smoothed[:: self.plot_downsample] or entropy_smoothed[-1:]
+
+        self.policy_line.set_data(plot_x, plot_policy)
+        self.entropy_line.set_data(plot_x, plot_entropy)
+
+    def _moving_average(self, values: List[float], window: int) -> List[float]:
+        return [
+            float(np.mean(values[max(0, idx - window + 1) : idx + 1]))
+            for idx in range(len(values))
+        ]
+
+    def refresh(self, render_delay: float) -> None:
+        self.fig.canvas.draw_idle()
+        plt.pause(render_delay)
 
     def close(self) -> None:
         plt.ioff()
@@ -133,16 +170,18 @@ class LiveEpisodeRenderer:
 
 
 def run_live_training(
-    num_episodes: int = 50,
+    num_episodes: int = 1000,
     reward_scheme: str = "selfish",
     use_communication: bool = False,
     grid_size: int = 15,
     num_resources: int = 10,
     max_steps: int = 100,
-    render_delay: float = 0.01,
+    render_delay: float = 0.001,
+    render_every: int = 50,
+    fast_mode: bool = True,
 ) -> List[Dict]:
     """
-    Run many PPO episodes with a single persistent live renderer window.
+    Run many PPO episodes with a persistent live renderer window.
     """
     env = GridWorldEnv(grid_size=grid_size, num_resources=num_resources, max_steps=max_steps)
     max_possible_reward = float(num_resources * len(env.agents))
@@ -166,7 +205,13 @@ def run_live_training(
     recent_resources: List[int] = []
 
     for episode in range(num_episodes):
+        if (episode + 1) % 50 == 0:
+            print(f"Episode {episode + 1} / {num_episodes}")
+
         raw_obs, _ = env.reset(seed=episode)
+        render_episode = render_every > 0 and episode % render_every == 0
+        if fast_mode:
+            render_episode = episode >= max(0, num_episodes - render_every)
 
         comm_layer: Optional[CommunicationLayer] = None
         if use_communication:
@@ -180,7 +225,8 @@ def run_live_training(
         cumulative_collected: Dict[str, int] = {agent: 0 for agent in env.agents}
         total_shaped_reward = 0.0
 
-        renderer.update(env.grid.copy(), episode, 0, render_delay)
+        if render_episode:
+            renderer.update(env.grid.copy(), episode, 0, render_delay)
 
         for step in range(max_steps):
             actions: Dict[str, int] = {}
@@ -233,7 +279,8 @@ def run_live_training(
             else:
                 obs = raw_next_obs
 
-            renderer.update(env.grid.copy(), episode, step + 1, render_delay)
+            if render_episode:
+                renderer.update(env.grid.copy(), episode, step + 1, render_delay)
 
             if all(done_flags.values()):
                 break
@@ -263,7 +310,7 @@ def run_live_training(
         recent_resources.append(total_resources)
         renderer.update_learning_plot(total_shaped_reward, total_resources)
         renderer.update_ppo_plot(ppo_metrics)
-        plt.pause(render_delay)
+        renderer.refresh(render_delay)
 
         print(
             f"Episode {episode + 1}: "
