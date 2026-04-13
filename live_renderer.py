@@ -26,7 +26,11 @@ class LiveEpisodeRenderer:
         norm = BoundaryNorm([-0.5, 0.5, 1.5, 2.5, 3.5], cmap.N)
 
         plt.ion()
-        self.fig, (self.ax_grid, self.ax_plot) = plt.subplots(1, 2, figsize=(10, 5))
+        self.fig = plt.figure(figsize=(12, 6))
+        gs = self.fig.add_gridspec(2, 2, width_ratios=[1.1, 1.0], wspace=0.35, hspace=0.35)
+        self.ax_grid = self.fig.add_subplot(gs[:, 0])
+        self.ax_plot = self.fig.add_subplot(gs[0, 1])
+        self.ax_ppo = self.fig.add_subplot(gs[1, 1])
         self.im = self.ax_grid.imshow(
             initial_grid,
             cmap=cmap,
@@ -55,6 +59,9 @@ class LiveEpisodeRenderer:
 
         self.episode_rewards: List[float] = []
         self.episode_resources: List[float] = []
+        self.policy_losses: List[float] = []
+        self.value_losses: List[float] = []
+        self.entropy_values: List[float] = []
         self.raw_line, = self.ax_plot.plot([], [], color="tab:blue", label="Reward (raw)")
         self.smooth_line, = self.ax_plot.plot([], [], color="tab:orange", label="Moving Avg (20)")
         self.resource_line, = self.ax_plot.plot([], [], color="tab:green", label="Resources collected")
@@ -66,7 +73,21 @@ class LiveEpisodeRenderer:
         self.ax_plot.grid(True, alpha=0.3)
         self.ax_plot.legend(loc="upper left")
 
-        self.fig.subplots_adjust(bottom=0.18, wspace=0.3)
+        self.policy_line, = self.ax_ppo.plot([], [], color="tab:red", label="Policy Loss (PPO)")
+        self.ax_entropy = self.ax_ppo.twinx()
+        self.entropy_line, = self.ax_entropy.plot([], [], color="tab:purple", label="Entropy (Exploration)")
+        self.ax_ppo.set_xlim(0, max(1, num_episodes))
+        self.ax_ppo.set_title("PPO Training Dynamics")
+        self.ax_ppo.set_xlabel("Episode")
+        self.ax_ppo.set_ylabel("Policy Loss (PPO)", color="tab:red")
+        self.ax_ppo.tick_params(axis="y", labelcolor="tab:red")
+        self.ax_ppo.grid(True, alpha=0.3)
+        self.ax_entropy.set_ylabel("Entropy (Exploration)", color="tab:purple")
+        self.ax_entropy.tick_params(axis="y", labelcolor="tab:purple")
+        ppo_handles = [self.policy_line, self.entropy_line]
+        self.ax_ppo.legend(ppo_handles, [line.get_label() for line in ppo_handles], loc="upper right")
+
+        self.fig.subplots_adjust(bottom=0.18)
 
     def update(self, grid: np.ndarray, episode: int, step: int, render_delay: float) -> None:
         self.im.set_data(grid)
@@ -91,6 +112,20 @@ class LiveEpisodeRenderer:
 
         self.ax_plot.relim()
         self.ax_plot.autoscale_view()
+
+    def update_ppo_plot(self, ppo_metrics: Dict[str, float]) -> None:
+        self.policy_losses.append(float(ppo_metrics.get("policy_loss", 0.0)))
+        self.value_losses.append(float(ppo_metrics.get("value_loss", 0.0)))
+        self.entropy_values.append(float(ppo_metrics.get("entropy", 0.0)))
+
+        x_vals = list(range(len(self.policy_losses)))
+        self.policy_line.set_data(x_vals, self.policy_losses)
+        self.entropy_line.set_data(x_vals, self.entropy_values)
+
+        self.ax_ppo.relim()
+        self.ax_ppo.autoscale_view()
+        self.ax_entropy.relim()
+        self.ax_entropy.autoscale_view()
 
     def close(self) -> None:
         plt.ioff()
@@ -203,8 +238,13 @@ def run_live_training(
             if all(done_flags.values()):
                 break
 
+        ppo_metrics = {
+            "policy_loss": 0.0,
+            "value_loss": 0.0,
+            "entropy": 0.0,
+        }
         try:
-            ppo_agent.update(last_value=0.0, last_done=True)
+            ppo_metrics = ppo_agent.update(last_value=0.0, last_done=True)
         except RuntimeError as exc:
             print(f"[live] PPO update skipped: {exc}")
 
@@ -216,11 +256,13 @@ def run_live_training(
             "resources_collected": resources.copy(),
             "total_reward": total_shaped_reward,
             "steps": env.step_count,
+            "ppo_metrics": ppo_metrics,
         }
         episode_summaries.append(episode_summary)
         recent_rewards.append(total_shaped_reward)
         recent_resources.append(total_resources)
         renderer.update_learning_plot(total_shaped_reward, total_resources)
+        renderer.update_ppo_plot(ppo_metrics)
         plt.pause(render_delay)
 
         print(

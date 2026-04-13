@@ -199,7 +199,7 @@ class PPOAgent:
 
         return returns, advantages
 
-    def update(self, last_value: float = 0.0, last_done: bool = True) -> None:
+    def update(self, last_value: float = 0.0, last_done: bool = True) -> Dict[str, float]:
         """
         Perform a PPO update using the collected on-policy batch.
 
@@ -214,7 +214,11 @@ class PPOAgent:
             )
 
         if len(self.buffer["rewards"]) == 0:
-            return
+            return {
+                "policy_loss": 0.0,
+                "value_loss": 0.0,
+                "entropy": 0.0,
+            }
 
         # Prepare tensors
         obs = torch.from_numpy(np.stack(self.buffer["obs"])).to(self.device_t)
@@ -229,6 +233,10 @@ class PPOAgent:
 
         dataset_size = obs.size(0)
         batch_size = self.config.mini_batch_size
+
+        policy_losses: List[float] = []
+        value_losses: List[float] = []
+        entropies: List[float] = []
 
         for _ in range(self.config.train_epochs):
             indices = np.random.permutation(dataset_size)
@@ -268,6 +276,15 @@ class PPOAgent:
                 nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=0.5)
                 self.optimizer.step()
 
+                policy_losses.append(float(policy_loss.item()))
+                value_losses.append(float(value_loss.item()))
+                entropies.append(float(entropy.item()))
+
         # Clear buffer after update
         self.reset_buffer()
 
+        return {
+            "policy_loss": float(np.mean(policy_losses)) if policy_losses else 0.0,
+            "value_loss": float(np.mean(value_losses)) if value_losses else 0.0,
+            "entropy": float(np.mean(entropies)) if entropies else 0.0,
+        }
