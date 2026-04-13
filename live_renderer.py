@@ -21,13 +21,13 @@ class LiveEpisodeRenderer:
     Keeps a single matplotlib window alive while multiple episodes run.
     """
 
-    def __init__(self, initial_grid: np.ndarray):
+    def __init__(self, initial_grid: np.ndarray, num_episodes: int, max_possible_reward: float):
         cmap = ListedColormap(["white", "green", "blue", "red"])
         norm = BoundaryNorm([-0.5, 0.5, 1.5, 2.5, 3.5], cmap.N)
 
         plt.ion()
-        self.fig, self.ax = plt.subplots(figsize=(8, 8))
-        self.im = self.ax.imshow(
+        self.fig, (self.ax_grid, self.ax_plot) = plt.subplots(1, 2, figsize=(10, 5))
+        self.im = self.ax_grid.imshow(
             initial_grid,
             cmap=cmap,
             norm=norm,
@@ -36,18 +36,61 @@ class LiveEpisodeRenderer:
         )
 
         rows, cols = initial_grid.shape
-        self.ax.set_xticks(np.arange(-0.5, cols, 1), minor=True)
-        self.ax.set_yticks(np.arange(-0.5, rows, 1), minor=True)
-        self.ax.grid(which="minor", color="gray", linestyle="-", linewidth=0.5, alpha=0.5)
-        self.ax.set_xticks([])
-        self.ax.set_yticks([])
-        self.fig.tight_layout()
+        self.ax_grid.set_title("Environment")
+        self.ax_grid.set_xticks(np.arange(-0.5, cols, 1), minor=True)
+        self.ax_grid.set_yticks(np.arange(-0.5, rows, 1), minor=True)
+        self.ax_grid.grid(which="minor", color="gray", linestyle="-", linewidth=0.5, alpha=0.5)
+        self.ax_grid.set_xticks([])
+        self.ax_grid.set_yticks([])
+        self.text = self.ax_grid.text(
+            0.5,
+            -0.08,
+            "",
+            transform=self.ax_grid.transAxes,
+            ha="center",
+            fontsize=12,
+            color="black",
+            bbox=dict(facecolor="white", alpha=0.8),
+        )
+
+        self.episode_rewards: List[float] = []
+        self.episode_resources: List[float] = []
+        self.raw_line, = self.ax_plot.plot([], [], color="tab:blue", label="Reward (raw)")
+        self.smooth_line, = self.ax_plot.plot([], [], color="tab:orange", label="Moving Avg (20)")
+        self.resource_line, = self.ax_plot.plot([], [], color="tab:green", label="Resources collected")
+        self.ax_plot.set_xlim(0, max(1, num_episodes))
+        self.ax_plot.set_ylim(0, max(1.0, max_possible_reward))
+        self.ax_plot.set_title("Learning Progress")
+        self.ax_plot.set_xlabel("Episode")
+        self.ax_plot.set_ylabel("Reward")
+        self.ax_plot.grid(True, alpha=0.3)
+        self.ax_plot.legend(loc="upper left")
+
+        self.fig.subplots_adjust(bottom=0.18, wspace=0.3)
 
     def update(self, grid: np.ndarray, episode: int, step: int, render_delay: float) -> None:
         self.im.set_data(grid)
-        self.ax.set_title(f"Episode {episode} | Step {step}")
+        self.text.set_text(f"Episode {episode} | Step {step}")
         self.fig.canvas.draw_idle()
         plt.pause(render_delay)
+
+    def update_learning_plot(self, total_reward: float, total_resources: float) -> None:
+        self.episode_rewards.append(float(total_reward))
+        self.episode_resources.append(float(total_resources))
+        x_vals = list(range(len(self.episode_rewards)))
+        self.raw_line.set_data(x_vals, self.episode_rewards)
+        self.resource_line.set_data(x_vals, self.episode_resources)
+
+        window = 20
+        if self.episode_rewards:
+            smoothed = [
+                float(np.mean(self.episode_rewards[max(0, idx - window + 1) : idx + 1]))
+                for idx in range(len(self.episode_rewards))
+            ]
+            self.smooth_line.set_data(x_vals, smoothed)
+
+        self.ax_plot.relim()
+        self.ax_plot.autoscale_view()
 
     def close(self) -> None:
         plt.ioff()
@@ -67,6 +110,7 @@ def run_live_training(
     Run many PPO episodes with a single persistent live renderer window.
     """
     env = GridWorldEnv(grid_size=grid_size, num_resources=num_resources, max_steps=max_steps)
+    max_possible_reward = float(num_resources * len(env.agents))
 
     obs_shape = env.observation_spaces[env.agents[0]].shape
     obs_dim = int(np.prod(obs_shape))
@@ -76,7 +120,11 @@ def run_live_training(
     ppo_agent = PPOAgent(obs_dim=obs_dim, n_actions=action_dim, device="cpu")
 
     raw_obs, _ = env.reset(seed=0)
-    renderer = LiveEpisodeRenderer(env.grid.copy())
+    renderer = LiveEpisodeRenderer(
+        env.grid.copy(),
+        num_episodes=num_episodes,
+        max_possible_reward=max_possible_reward,
+    )
 
     episode_summaries: List[Dict] = []
     recent_rewards: List[float] = []
@@ -172,6 +220,8 @@ def run_live_training(
         episode_summaries.append(episode_summary)
         recent_rewards.append(total_shaped_reward)
         recent_resources.append(total_resources)
+        renderer.update_learning_plot(total_shaped_reward, total_resources)
+        plt.pause(render_delay)
 
         print(
             f"Episode {episode + 1}: "
