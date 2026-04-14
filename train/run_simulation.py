@@ -19,6 +19,8 @@ from env.utils import (
 )
 
 from testing.ppo_agent import PPOAgent
+from testing.rewards import apply_reward_scheme
+from testing.communication import CommunicationLayer
 
 
 def run_episode(
@@ -27,8 +29,14 @@ def run_episode(
     episode_num: int,
     save_screenshots: bool = True,
     save_heatmaps: bool = True,
+    save_artifacts: bool = True,
     agent_type: str = "heuristic",
     ppo_agent: Optional[PPOAgent] = None,
+    logs_dir: Optional[str] = None,
+    results_dir: Optional[str] = None,
+    reward_scheme: str = "selfish",
+    use_communication: bool = False,
+    render: bool = False,
 ) -> Dict:
     """
     Run a single episode of the simulation.
@@ -39,18 +47,39 @@ def run_episode(
         episode_num: Episode number for logging
         save_screenshots: Whether to save grid screenshots
         save_heatmaps: Whether to save heatmap visualizations
+        save_artifacts: Whether to save plots and JSON outputs for the episode
         agent_type: "heuristic" (default) or "ppo"
         ppo_agent: Shared PPOAgent instance when agent_type == "ppo"
+        logs_dir: Base logs directory (e.g., "logs/heuristic_selfish")
+        results_dir: Base results directory (e.g., "results/heuristic_selfish")
+        reward_scheme: "selfish", "mixed", or "fully_cooperative" (shaping for PPO; logged for all)
+        use_communication: If True, augment PPO observations with a bandwidth-limited message vector
+        render: If True, capture full-grid states across the episode for animation
 
     Returns:
         Dict containing episode data
     """
-    observations, infos = env.reset(seed=episode_num)
+    raw_obs, infos = env.reset(seed=episode_num)
 
     agent_type = agent_type.lower()
+    reward_scheme = reward_scheme.lower()
+    logs_dir = logs_dir or "logs"
+    results_dir = results_dir or "results"
+
+    total_spawned = env.num_resources
+    cumulative_collected: Dict[str, int] = {a: 0 for a in env.agents}
+    total_shaped_reward = 0.0
 
     if agent_type == "ppo" and ppo_agent is None:
         raise ValueError("agent_type='ppo' requires a ppo_agent instance.")
+
+    comm_layer: Optional[CommunicationLayer] = None
+    if agent_type == "ppo" and use_communication:
+        comm_layer = CommunicationLayer(env)
+        comm_layer.reset()
+        obs = comm_layer.build_augment_observation(raw_obs)
+    else:
+        obs = raw_obs
 
     # Reset agents / buffers
     if agent_type == "heuristic":
@@ -66,7 +95,11 @@ def run_episode(
         "agent_0": [],
         "agent_1": [],
     }
+    grid_sequence: List[np.ndarray] = []
     step_count = 0
+
+    if render:
+        grid_sequence.append(env.grid.copy())
 
     # Store initial positions
     for agent_id in env.agents:
@@ -83,10 +116,12 @@ def run_episode(
 
         if agent_type == "heuristic":
             for agent_id, agent in agents.items():
-                actions[agent_id] = agent.get_action(observations[agent_id])
+                actions[agent_id] = agent.get_action(obs[agent_id])
         else:
             for agent_id in env.agents:
-                flat_obs = observations[agent_id].flatten()
+                # If communication is enabled, obs[agent_id] is already a flat vector.
+                agent_obs = obs[agent_id]
+                flat_obs = agent_obs if agent_obs.ndim == 1 else agent_obs.flatten()
                 action, log_prob, value = ppo_agent.select_action(flat_obs)
                 actions[agent_id] = int(action)
                 step_log_probs[agent_id] = float(log_prob)
@@ -94,9 +129,23 @@ def run_episode(
                 step_flat_obs[agent_id] = flat_obs
 
         # Step environment
-        observations, rewards, terminations, truncations, infos = env.step(actions)
+        raw_next_obs, rewards, terminations, truncations, infos = env.step(actions)
 
-        # Store PPO transitions (after env.step, using reward + done).
+        # Raw collection counts from env (before shaping)
+        for agent_id, r in rewards.items():
+            if r > 0.0:
+                cumulative_collected[agent_id] += 1
+
+        shaped_rewards = apply_reward_scheme(
+            scheme=reward_scheme,
+            raw_rewards=rewards,
+            cumulative_collected=cumulative_collected,
+            total_spawned=total_spawned,
+            alpha=0.5,
+        )
+        total_shaped_reward += sum(shaped_rewards.values())
+
+        # Store PPO transitions (after env.step, using shaped reward + done).
         if agent_type == "ppo":
             for agent_id in env.agents:
                 done = bool(terminations[agent_id] or truncations[agent_id])
@@ -104,10 +153,20 @@ def run_episode(
                     obs=step_flat_obs[agent_id],
                     action=actions[agent_id],
                     log_prob=step_log_probs[agent_id],
-                    reward=float(rewards[agent_id]),
+                    reward=float(shaped_rewards[agent_id]),
                     done=done,
                     value=step_values[agent_id],
                 )
+
+        # Update communication messages for next step (PPO only)
+        if comm_layer is not None:
+            comm_layer.update_messages_after_step()
+            obs = comm_layer.build_augment_observation(raw_next_obs)
+        else:
+            obs = raw_next_obs
+
+        if render:
+            grid_sequence.append(env.grid.copy())
 
         # Store agent positions after step
         for agent_id in env.agents:
@@ -119,7 +178,8 @@ def run_episode(
             {
                 "step": step_count,
                 "actions": actions.copy(),
-                "rewards": rewards.copy(),
+                "rewards": shaped_rewards.copy(),
+                "raw_rewards": rewards.copy(),
             }
         )
 
@@ -144,41 +204,44 @@ def run_episode(
     initial_resources = env.get_initial_resource_positions()
 
     # Save screenshots
-    if save_screenshots:
-        screenshot_path = f"logs/screenshots/episode_{episode_num:04d}_final.png"
+    screenshot_path = None
+    if save_artifacts and save_screenshots:
+        screenshot_path = os.path.join(logs_dir, "screenshots", f"episode_{episode_num:04d}_final.png")
         save_grid_screenshot(final_grid, screenshot_path, title=f"Episode {episode_num} - Final State")
 
     # Save heatmaps
-    if save_heatmaps:
+    heatmap_paths = {}
+    if save_artifacts and save_heatmaps:
         for agent_id, heatmap in heatmaps.items():
-            heatmap_path = f"logs/heatmaps/episode_{episode_num:04d}_{agent_id}.png"
+            heatmap_path = os.path.join(logs_dir, "heatmaps", f"episode_{episode_num:04d}_{agent_id}.png")
             save_heatmap(heatmap, heatmap_path, agent_id, title=f"Episode {episode_num} - {agent_id}")
+            heatmap_paths[agent_id] = heatmap_path
 
     # Save resource distribution
-    resource_dist_path = f"logs/resources/episode_{episode_num:04d}_distribution.png"
-    plot_resource_distribution(initial_resources, resource_dist_path, grid_size=env.grid_size)
+    resource_dist_path = None
+    if save_artifacts:
+        resource_dist_path = os.path.join(logs_dir, "resources", f"episode_{episode_num:04d}_distribution.png")
+        plot_resource_distribution(initial_resources, resource_dist_path, grid_size=env.grid_size)
 
     # Save trajectory plots for episodes 0 and 1
-    if episode_num in [0, 1]:
-        trajectory_path = f"results/trajectories/episode_{episode_num}_trajectory.png"
+    if save_artifacts and episode_num in [0, 1]:
+        trajectory_path = os.path.join(results_dir, "trajectories", f"episode_{episode_num}_trajectory.png")
         save_trajectory_plot(agent_trajectories, env.grid_size, trajectory_path)
 
     # Create episode summary
     episode_data = {
         "episode_num": episode_num,
+        "reward_scheme": reward_scheme,
         "total_steps": step_count,
+        "total_shaped_reward": total_shaped_reward,
         "resources_collected": resources_collected.copy(),
         "total_resources_spawned": len(initial_resources),
         "initial_resource_positions": initial_resources,
         "agent_0_survived": resources_collected["agent_0"] >= 1,
         "agent_1_survived": resources_collected["agent_1"] >= 1,
         "both_survived": resources_collected["agent_0"] >= 1 and resources_collected["agent_1"] >= 1,
-        "screenshot_path": f"logs/screenshots/episode_{episode_num:04d}_final.png" if save_screenshots else None,
-        "heatmap_paths": {
-            agent_id: f"logs/heatmaps/episode_{episode_num:04d}_{agent_id}.png" for agent_id in heatmaps.keys()
-        }
-        if save_heatmaps
-        else {},
+        "screenshot_path": screenshot_path,
+        "heatmap_paths": heatmap_paths,
         "resource_dist_path": resource_dist_path,
         # Store heatmaps as lists for JSON serialisation
         "heatmaps": {agent_id: heatmap.tolist() for agent_id, heatmap in heatmaps.items()},
@@ -187,10 +250,14 @@ def run_episode(
     }
 
     # Save episode JSON
-    episode_json_path = f"logs/episodes/episode_{episode_num:04d}.json"
-    os.makedirs(os.path.dirname(episode_json_path), exist_ok=True)
-    with open(episode_json_path, "w") as f:
-        json.dump(episode_data, f, indent=2)
+    if save_artifacts:
+        episode_json_path = os.path.join(logs_dir, "episodes", f"episode_{episode_num:04d}.json")
+        os.makedirs(os.path.dirname(episode_json_path), exist_ok=True)
+        with open(episode_json_path, "w") as f:
+            json.dump(episode_data, f, indent=2)
+
+    if render:
+        episode_data["grid_sequence"] = grid_sequence
 
     return episode_data
 
@@ -203,6 +270,8 @@ def run_batch_simulation(
     save_screenshots: bool = True,
     save_heatmaps: bool = True,
     agent_type: str = "heuristic",
+    reward_scheme: str = "selfish",
+    use_communication: bool = False,
 ) -> List[Dict]:
     """
     Run a batch of simulation episodes.
@@ -222,6 +291,18 @@ def run_batch_simulation(
     env = GridWorldEnv(grid_size=grid_size, num_resources=num_resources, max_steps=max_steps)
 
     agent_type = agent_type.lower()
+    reward_scheme = reward_scheme.lower()
+    run_tag = f"{agent_type}_{reward_scheme}" + ("_comm" if use_communication else "")
+
+    # Per experiment: agent_type + reward_scheme
+    logs_dir = f"logs/{run_tag}"
+    results_dir = f"results/{run_tag}"
+    os.makedirs(os.path.join(logs_dir, "episodes"), exist_ok=True)
+    os.makedirs(os.path.join(logs_dir, "screenshots"), exist_ok=True)
+    os.makedirs(os.path.join(logs_dir, "heatmaps"), exist_ok=True)
+    os.makedirs(os.path.join(logs_dir, "resources"), exist_ok=True)
+    os.makedirs(os.path.join(results_dir, "trajectories"), exist_ok=True)
+    os.makedirs(os.path.join(results_dir, "reward_curves"), exist_ok=True)
 
     # Create agents (heuristic) or PPO policy (shared)
     ppo_agent: Optional[PPOAgent] = None
@@ -232,7 +313,12 @@ def run_batch_simulation(
         }
     elif agent_type == "ppo":
         agents = None
-        obs_dim = grid_size * grid_size
+        # Derive obs_dim from the environment to support both full and partial observability.
+        obs_shape = env.observation_spaces[env.agents[0]].shape
+        obs_dim = int(np.prod(obs_shape))
+        if use_communication:
+            # Communication layer concatenates a fixed-length message vector.
+            obs_dim += int(CommunicationLayer(env).config.max_ints)
         action_dim = 5
         ppo_agent = PPOAgent(obs_dim=obs_dim, n_actions=action_dim)
     else:
@@ -252,6 +338,10 @@ def run_batch_simulation(
             save_heatmaps=save_heatmaps,
             agent_type=agent_type,
             ppo_agent=ppo_agent,
+            logs_dir=logs_dir,
+            results_dir=results_dir,
+            reward_scheme=reward_scheme,
+            use_communication=use_communication,
         )
         all_episode_data.append(episode_data)
 
@@ -264,7 +354,7 @@ def run_batch_simulation(
         )
 
     print(f"\nCompleted {num_episodes} episodes!")
-    print("Results saved to logs/ directory")
+    print(f"Results saved to {logs_dir}/ and {results_dir}/")
 
     return all_episode_data
 
@@ -278,5 +368,5 @@ if __name__ == "__main__":
         max_steps=200,
         save_screenshots=True,
         save_heatmaps=True,
+        reward_scheme="selfish",
     )
-
