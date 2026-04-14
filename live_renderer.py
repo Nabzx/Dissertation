@@ -113,9 +113,16 @@ class LiveEpisodeRenderer:
 
         self.fig.subplots_adjust(bottom=0.18)
 
-    def update(self, grid: np.ndarray, episode: int, step: int, render_delay: float) -> None:
+    def update(
+        self,
+        grid: np.ndarray,
+        episode: int,
+        num_episodes: int,
+        step: int,
+        render_delay: float,
+    ) -> None:
         self.im.set_data(grid)
-        self.text.set_text(f"Episode {episode} | Step {step}")
+        self.text.set_text(f"Episode {episode}/{num_episodes} | Step {step}")
         self.fig.canvas.draw_idle()
         plt.pause(render_delay)
 
@@ -178,7 +185,8 @@ def run_live_training(
     max_steps: int = 100,
     render_delay: float = 0.001,
     render_every: int = 50,
-    fast_mode: bool = True,
+    fast_mode: bool = False,
+    final_demo_episodes: int = 10,
 ) -> List[Dict]:
     """
     Run many PPO episodes with a persistent live renderer window.
@@ -204,14 +212,13 @@ def run_live_training(
     recent_rewards: List[float] = []
     recent_resources: List[int] = []
 
-    for episode in range(num_episodes):
-        if (episode + 1) % 50 == 0:
-            print(f"Episode {episode + 1} / {num_episodes}")
-
-        raw_obs, _ = env.reset(seed=episode)
-        render_episode = render_every > 0 and episode % render_every == 0
-        if fast_mode:
-            render_episode = episode >= max(0, num_episodes - render_every)
+    def run_live_episode(
+        episode_seed: int,
+        render_episode: bool,
+        episode_label: int,
+        train_policy: bool = True,
+    ) -> Dict:
+        raw_obs, _ = env.reset(seed=episode_seed)
 
         comm_layer: Optional[CommunicationLayer] = None
         if use_communication:
@@ -221,12 +228,13 @@ def run_live_training(
         else:
             obs = raw_obs
 
-        ppo_agent.reset_buffer()
+        if train_policy:
+            ppo_agent.reset_buffer()
         cumulative_collected: Dict[str, int] = {agent: 0 for agent in env.agents}
         total_shaped_reward = 0.0
 
         if render_episode:
-            renderer.update(env.grid.copy(), episode, 0, render_delay)
+            renderer.update(env.grid.copy(), episode_label, num_episodes, 0, render_delay)
 
         for step in range(max_steps):
             actions: Dict[str, int] = {}
@@ -263,15 +271,16 @@ def run_live_training(
                 for agent_id in env.agents
             }
 
-            for agent_id in env.agents:
-                ppo_agent.store_transition(
-                    obs=step_flat_obs[agent_id],
-                    action=actions[agent_id],
-                    log_prob=step_log_probs[agent_id],
-                    reward=float(shaped_rewards[agent_id]),
-                    done=done_flags[agent_id],
-                    value=step_values[agent_id],
-                )
+            if train_policy:
+                for agent_id in env.agents:
+                    ppo_agent.store_transition(
+                        obs=step_flat_obs[agent_id],
+                        action=actions[agent_id],
+                        log_prob=step_log_probs[agent_id],
+                        reward=float(shaped_rewards[agent_id]),
+                        done=done_flags[agent_id],
+                        value=step_values[agent_id],
+                    )
 
             if comm_layer is not None:
                 comm_layer.update_messages_after_step()
@@ -280,7 +289,7 @@ def run_live_training(
                 obs = raw_next_obs
 
             if render_episode:
-                renderer.update(env.grid.copy(), episode, step + 1, render_delay)
+                renderer.update(env.grid.copy(), episode_label, num_episodes, step + 1, render_delay)
 
             if all(done_flags.values()):
                 break
@@ -290,19 +299,40 @@ def run_live_training(
             "value_loss": 0.0,
             "entropy": 0.0,
         }
-        try:
-            ppo_metrics = ppo_agent.update(last_value=0.0, last_done=True)
-        except RuntimeError as exc:
-            print(f"[live] PPO update skipped: {exc}")
+        if train_policy:
+            try:
+                ppo_metrics = ppo_agent.update(last_value=0.0, last_done=True)
+            except RuntimeError as exc:
+                print(f"[live] PPO update skipped: {exc}")
 
         resources = env.get_resources_collected()
         total_resources = int(sum(resources.values()))
+
+        return {
+            "resources": resources,
+            "total_resources": total_resources,
+            "total_reward": total_shaped_reward,
+            "ppo_metrics": ppo_metrics,
+            "steps": env.step_count,
+        }
+
+    for episode in range(num_episodes):
+        render_episode = episode % render_every == 0
+        episode_result = run_live_episode(
+            episode_seed=episode,
+            render_episode=render_episode and not fast_mode,
+            episode_label=episode + 1,
+        )
+        resources = episode_result["resources"]
+        total_resources = episode_result["total_resources"]
+        total_shaped_reward = episode_result["total_reward"]
+        ppo_metrics = episode_result["ppo_metrics"]
 
         episode_summary = {
             "episode_num": episode,
             "resources_collected": resources.copy(),
             "total_reward": total_shaped_reward,
-            "steps": env.step_count,
+            "steps": episode_result["steps"],
             "ppo_metrics": ppo_metrics,
         }
         episode_summaries.append(episode_summary)
@@ -317,6 +347,9 @@ def run_live_training(
             f"resources collected={resources}, total reward={total_shaped_reward:.2f}"
         )
 
+        if (episode + 1) % 100 == 0:
+            print(f"Completed {episode + 1}/{num_episodes} episodes")
+
         if (episode + 1) % 10 == 0:
             avg_reward = float(np.mean(recent_rewards[-10:]))
             avg_resources = float(np.mean(recent_resources[-10:]))
@@ -324,6 +357,14 @@ def run_live_training(
                 f"Average over episodes {episode - 8}-{episode + 1}: "
                 f"resources={avg_resources:.2f}, reward={avg_reward:.2f}"
             )
+
+    for demo_idx in range(final_demo_episodes):
+        run_live_episode(
+            episode_seed=num_episodes + demo_idx,
+            render_episode=True,
+            episode_label=num_episodes,
+            train_policy=False,
+        )
 
     renderer.close()
     return episode_summaries
