@@ -84,6 +84,22 @@ class LiveEpisodeRenderer:
             self.resource_patches.append(resource_patch)
             self.ax_grid.add_patch(resource_patch)
 
+        self.obstacle_patches: List[Rectangle] = []
+        for row in range(rows):
+            for col in range(cols):
+                obstacle_patch = Rectangle(
+                    (col + 0.12, row + 0.12),
+                    0.76,
+                    0.76,
+                    facecolor="#4b5563",
+                    edgecolor="#374151",
+                    linewidth=0.8,
+                    zorder=2,
+                    visible=False,
+                )
+                self.obstacle_patches.append(obstacle_patch)
+                self.ax_grid.add_patch(obstacle_patch)
+
         self.agent_patches = {
             2: Circle(
                 (0.5, 0.5),
@@ -111,6 +127,7 @@ class LiveEpisodeRenderer:
             Line2D([0], [0], marker="o", color="none", markerfacecolor="#3b82f6", markeredgecolor="#1d4ed8", markersize=9, label="Agent 0"),
             Line2D([0], [0], marker="o", color="none", markerfacecolor="#ef4444", markeredgecolor="#b91c1c", markersize=9, label="Agent 1"),
             Line2D([0], [0], marker="o", color="none", markerfacecolor="#4fae68", markeredgecolor="#2f6f41", markersize=7, label="Resource"),
+            Rectangle((0, 0), 1, 1, facecolor="#4b5563", edgecolor="#374151", label="Obstacle"),
         ]
         self.ax_grid.legend(
             handles=legend_handles,
@@ -197,6 +214,10 @@ class LiveEpisodeRenderer:
         plt.pause(render_delay)
 
     def _update_environment(self, grid: np.ndarray) -> None:
+        obstacle_mask = grid == 4
+        for patch, is_obstacle in zip(self.obstacle_patches, obstacle_mask.flatten()):
+            patch.set_visible(bool(is_obstacle))
+
         resource_idx = 0
         for row, col in np.argwhere(grid == 1):
             if resource_idx >= len(self.resource_patches):

@@ -17,7 +17,7 @@ def save_grid_screenshot(grid: np.ndarray, filename: str, title: Optional[str] =
     Save a visual representation of the grid state.
 
     Args:
-        grid: 15x15 grid array (0=empty, 1=resource, 2=agent_0, 3=agent_1)
+        grid: 15x15 grid array (0=empty, 1=resource, 2=agent_0, 3=agent_1, 4=obstacle)
         filename: Output file path
         title: Optional title for the plot
     """
@@ -37,6 +37,8 @@ def save_grid_screenshot(grid: np.ndarray, filename: str, title: Optional[str] =
                 color_map[i, j] = [0.0, 0.0, 1.0]  # Blue
             elif grid[i, j] == 3:  # Agent 1
                 color_map[i, j] = [1.0, 0.0, 0.0]  # Red
+            elif grid[i, j] == 4:  # Obstacle
+                color_map[i, j] = [0.3, 0.3, 0.3]  # Dark grey
 
     ax.imshow(color_map, origin="upper", interpolation="nearest")
     ax.set_xticks(np.arange(-0.5, grid.shape[1], 1), minor=True)
@@ -56,6 +58,7 @@ def save_grid_screenshot(grid: np.ndarray, filename: str, title: Optional[str] =
         Patch(facecolor="green", label="Resource"),
         Patch(facecolor="blue", label="Agent 0"),
         Patch(facecolor="red", label="Agent 1"),
+        Patch(facecolor="darkgray", label="Obstacle"),
     ]
     ax.legend(handles=legend_elements, loc="upper right", bbox_to_anchor=(1.15, 1))
 
@@ -332,4 +335,3 @@ def save_reward_curve(reward_history: Dict[str, List[float]], filename: str):
 
     plt.savefig(filename, dpi=150, bbox_inches="tight")
     plt.close()
-

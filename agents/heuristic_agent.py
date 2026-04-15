@@ -34,7 +34,7 @@ class HeuristicAgent:
         Select an action based on the current observation.
 
         Args:
-            observation: 15x15 grid observation (0=empty, 1=resource, 2=agent_0, 3=agent_1)
+            observation: 15x15 grid observation (0=empty, 1=resource, 2=agent_0, 3=agent_1, 4=obstacle)
 
         Returns:
             Action value (0=stay, 1=up, 2=down, 3=left, 4=right)
@@ -94,4 +94,3 @@ class HeuristicAgent:
     def reset(self):
         """Reset agent state (no state to reset for heuristic agent)."""
         pass
-
