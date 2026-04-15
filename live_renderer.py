@@ -41,6 +41,11 @@ class LiveEpisodeRenderer:
         self.view_size = view_size
         self.show_perception = show_perception
         self.trail_length = 20
+        self.perception_range = 3
+        self.agent_facing = {
+            2: (0, 1),   # right
+            3: (0, -1),  # left
+        }
         self.arena_palette = {
             "void": "#050608",
             "panel": "#0c0f14",
@@ -154,44 +159,51 @@ class LiveEpisodeRenderer:
         )
         self.ax_grid.add_patch(self.arena_wall)
 
-        self.dim_overlay = Rectangle(
-            (0, 0),
-            cols,
-            rows,
-            facecolor="#02040a",
-            edgecolor="none",
-            alpha=0.14 if show_perception else 0.0,
-            zorder=1,
-            visible=show_perception,
-        )
-        self.ax_grid.add_patch(self.dim_overlay)
-
-        self.perception_patches = {
-            2: Rectangle(
-                (0, 0),
-                1,
-                1,
-                facecolor=self.arena_palette["perception_0"],
-                edgecolor=self.arena_palette["agent_0"],
-                linewidth=1.0,
-                alpha=0.16,
-                zorder=2.5,
-                visible=False,
-            ),
-            3: Rectangle(
-                (0, 0),
-                1,
-                1,
-                facecolor=self.arena_palette["perception_1"],
-                edgecolor=self.arena_palette["agent_1"],
-                linewidth=1.0,
-                alpha=0.16,
-                zorder=2.5,
-                visible=False,
-            ),
+        self.perception_cell_patches = {
+            2: [],
+            3: [],
         }
-        for patch in self.perception_patches.values():
-            self.ax_grid.add_patch(patch)
+        perception_fill = {
+            2: self.arena_palette["perception_0"],
+            3: self.arena_palette["perception_1"],
+        }
+        for agent_value, color in perception_fill.items():
+            for _ in range(6):
+                patch = Rectangle(
+                    (0, 0),
+                    1,
+                    1,
+                    facecolor=color,
+                    edgecolor="none",
+                    alpha=0.14,
+                    zorder=2.45,
+                    visible=False,
+                )
+                self.perception_cell_patches[agent_value].append(patch)
+                self.ax_grid.add_patch(patch)
+
+        self.perception_ray_lines = {
+            2: [],
+            3: [],
+        }
+        ray_colors = {
+            2: self.arena_palette["perception_0"],
+            3: self.arena_palette["perception_1"],
+        }
+        for agent_value, color in ray_colors.items():
+            for _ in range(5):
+                line = Line2D(
+                    [],
+                    [],
+                    color=color,
+                    linewidth=1.4,
+                    alpha=0.45,
+                    solid_capstyle="round",
+                    zorder=3.2,
+                    visible=False,
+                )
+                self.perception_ray_lines[agent_value].append(line)
+                self.ax_grid.add_line(line)
 
         self.resource_patches: List[Circle] = []
         for _ in range(max_resources):
@@ -392,13 +404,15 @@ class LiveEpisodeRenderer:
         num_episodes: int,
         step: int,
         render_delay: float,
+        actions: Optional[Dict[str, int]] = None,
     ) -> None:
-        self._update_environment(grid)
+        self._update_environment(grid, actions=actions)
         self.text.set_text(f"Episode {episode}/{num_episodes} | Step {step}")
         self.fig.canvas.draw_idle()
         plt.pause(render_delay)
 
-    def _update_environment(self, grid: np.ndarray) -> None:
+    def _update_environment(self, grid: np.ndarray, actions: Optional[Dict[str, int]] = None) -> None:
+        self._update_facing(actions)
         self._update_perception(grid)
 
         obstacle_mask = grid == 4
@@ -467,31 +481,109 @@ class LiveEpisodeRenderer:
             patch.set_alpha(fade)
             patch.set_visible(True)
 
+    def _update_facing(self, actions: Optional[Dict[str, int]]) -> None:
+        if not actions:
+            return
+        action_to_direction = {
+            1: (-1, 0),
+            2: (1, 0),
+            3: (0, -1),
+            4: (0, 1),
+        }
+        for agent_id, action in actions.items():
+            if action not in action_to_direction:
+                continue
+            agent_value = 2 if agent_id == "agent_0" else 3
+            self.agent_facing[agent_value] = action_to_direction[action]
+
     def _update_perception(self, grid: np.ndarray) -> None:
         if not self.show_perception:
             return
 
-        radius = self.view_size // 2
-        for agent_value, patch in self.perception_patches.items():
+        for agent_value in self.perception_ray_lines.keys():
+            for patch in self.perception_cell_patches[agent_value]:
+                patch.set_visible(False)
+            for line in self.perception_ray_lines[agent_value]:
+                line.set_visible(False)
+
+        for agent_value in self.perception_ray_lines.keys():
             positions = np.argwhere(grid == agent_value)
             if len(positions) == 0:
-                patch.set_visible(False)
                 continue
 
             row, col = positions[0]
-            row_start = max(0, int(row) - radius)
-            row_end = min(self.grid_rows, int(row) + radius + 1)
-            col_start = max(0, int(col) - radius)
-            col_end = min(self.grid_cols, int(col) + radius + 1)
+            facing = self.agent_facing[agent_value]
+            ray_specs = self._compute_forward_rays(int(row), int(col), facing, grid)
 
-            visible_mask = self.arena_mask[row_start:row_end, col_start:col_end]
-            if not np.any(visible_mask):
-                patch.set_visible(False)
-                continue
-            patch.set_xy((col_start, row_start))
-            patch.set_width(col_end - col_start)
-            patch.set_height(row_end - row_start)
-            patch.set_visible(True)
+            visible_cells = []
+            for idx, ray in enumerate(ray_specs):
+                if idx < len(self.perception_ray_lines[agent_value]) and len(ray["points"]) >= 2:
+                    xs = [point[0] for point in ray["points"]]
+                    ys = [point[1] for point in ray["points"]]
+                    line = self.perception_ray_lines[agent_value][idx]
+                    line.set_data(xs, ys)
+                    line.set_visible(True)
+                visible_cells.extend(ray["cells"])
+
+            unique_cells = []
+            seen = set()
+            for cell in visible_cells:
+                if cell in seen:
+                    continue
+                seen.add(cell)
+                unique_cells.append(cell)
+
+            for idx, (cell_row, cell_col) in enumerate(unique_cells[: len(self.perception_cell_patches[agent_value])]):
+                patch = self.perception_cell_patches[agent_value][idx]
+                patch.set_xy((cell_col, cell_row))
+                patch.set_width(1)
+                patch.set_height(1)
+                patch.set_visible(True)
+
+    def _compute_forward_rays(
+        self,
+        row: int,
+        col: int,
+        facing: tuple[int, int],
+        grid: np.ndarray,
+    ) -> List[Dict[str, List]]:
+        dr, dc = facing
+        if (dr, dc) in [(0, 1), (0, -1)]:
+            fan_offsets = [-0.6, -0.3, 0.0, 0.3, 0.6]
+            lateral = (1, 0)
+        else:
+            fan_offsets = [-0.6, -0.3, 0.0, 0.3, 0.6]
+            lateral = (0, 1)
+
+        origin_x = float(col) + 0.5
+        origin_y = float(row) + 0.5
+        rays = []
+
+        for offset in fan_offsets:
+            points = [(origin_x, origin_y)]
+            cells = []
+            blocked = False
+            for step in range(1, self.perception_range + 1):
+                target_row = row + dr * step + int(round(lateral[0] * offset * step))
+                target_col = col + dc * step + int(round(lateral[1] * offset * step))
+
+                if not (0 <= target_row < self.grid_rows and 0 <= target_col < self.grid_cols):
+                    break
+                if not self.arena_mask[target_row, target_col]:
+                    break
+
+                cell_center = (float(target_col) + 0.5, float(target_row) + 0.5)
+                points.append(cell_center)
+                cells.append((target_row, target_col))
+
+                if grid[target_row, target_col] == 4:
+                    blocked = True
+                    break
+
+            if blocked or len(points) > 1:
+                rays.append({"points": points, "cells": cells})
+
+        return rays
 
     def update_learning_plot(self, total_reward: float, total_resources: float) -> None:
         self.episode_rewards.append(float(total_reward))
@@ -605,7 +697,7 @@ def run_live_training(
         total_shaped_reward = 0.0
 
         if render_episode:
-            renderer.update(env.grid.copy(), episode_label, num_episodes, 0, render_delay)
+            renderer.update(env.grid.copy(), episode_label, num_episodes, 0, render_delay, actions=None)
 
         for step in range(max_steps):
             actions: Dict[str, int] = {}
@@ -660,7 +752,14 @@ def run_live_training(
                 obs = raw_next_obs
 
             if render_episode:
-                renderer.update(env.grid.copy(), episode_label, num_episodes, step + 1, render_delay)
+                renderer.update(
+                    env.grid.copy(),
+                    episode_label,
+                    num_episodes,
+                    step + 1,
+                    render_delay,
+                    actions=actions,
+                )
 
             if all(done_flags.values()):
                 break
