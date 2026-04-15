@@ -28,12 +28,16 @@ class LiveEpisodeRenderer:
         num_episodes: int,
         max_possible_reward: float,
         max_resources: int,
+        view_size: int,
+        show_perception: bool = True,
     ):
         self.smoothing_window = 50
         self.plot_update_every = 10
         self.plot_downsample = 5
         self.max_possible_reward = max_possible_reward
         self.max_resources = max_resources
+        self.view_size = view_size
+        self.show_perception = show_perception
 
         plt.ion()
         self.fig = plt.figure(figsize=(12, 6))
@@ -69,6 +73,45 @@ class LiveEpisodeRenderer:
                     zorder=0,
                 )
                 self.ax_grid.add_patch(tile)
+
+        self.dim_overlay = Rectangle(
+            (0, 0),
+            cols,
+            rows,
+            facecolor="#1f2937",
+            edgecolor="none",
+            alpha=0.18 if show_perception else 0.0,
+            zorder=1,
+            visible=show_perception,
+        )
+        self.ax_grid.add_patch(self.dim_overlay)
+
+        self.perception_patches = {
+            2: Rectangle(
+                (0, 0),
+                1,
+                1,
+                facecolor="#93c5fd",
+                edgecolor="#60a5fa",
+                linewidth=1.0,
+                alpha=0.22,
+                zorder=2.5,
+                visible=False,
+            ),
+            3: Rectangle(
+                (0, 0),
+                1,
+                1,
+                facecolor="#fca5a5",
+                edgecolor="#f87171",
+                linewidth=1.0,
+                alpha=0.22,
+                zorder=2.5,
+                visible=False,
+            ),
+        }
+        for patch in self.perception_patches.values():
+            self.ax_grid.add_patch(patch)
 
         self.resource_patches: List[Circle] = []
         for _ in range(max_resources):
@@ -129,6 +172,10 @@ class LiveEpisodeRenderer:
             Line2D([0], [0], marker="o", color="none", markerfacecolor="#4fae68", markeredgecolor="#2f6f41", markersize=7, label="Resource"),
             Rectangle((0, 0), 1, 1, facecolor="#4b5563", edgecolor="#374151", label="Obstacle"),
         ]
+        if show_perception:
+            legend_handles.append(
+                Rectangle((0, 0), 1, 1, facecolor="#bfdbfe", edgecolor="#60a5fa", alpha=0.35, label="Perception")
+            )
         self.ax_grid.legend(
             handles=legend_handles,
             loc="upper center",
@@ -214,6 +261,8 @@ class LiveEpisodeRenderer:
         plt.pause(render_delay)
 
     def _update_environment(self, grid: np.ndarray) -> None:
+        self._update_perception(grid)
+
         obstacle_mask = grid == 4
         for patch, is_obstacle in zip(self.obstacle_patches, obstacle_mask.flatten()):
             patch.set_visible(bool(is_obstacle))
@@ -237,6 +286,28 @@ class LiveEpisodeRenderer:
                 continue
             row, col = positions[0]
             patch.center = (float(col) + 0.5, float(row) + 0.5)
+            patch.set_visible(True)
+
+    def _update_perception(self, grid: np.ndarray) -> None:
+        if not self.show_perception:
+            return
+
+        radius = self.view_size // 2
+        for agent_value, patch in self.perception_patches.items():
+            positions = np.argwhere(grid == agent_value)
+            if len(positions) == 0:
+                patch.set_visible(False)
+                continue
+
+            row, col = positions[0]
+            row_start = max(0, int(row) - radius)
+            row_end = min(self.grid_rows, int(row) + radius + 1)
+            col_start = max(0, int(col) - radius)
+            col_end = min(self.grid_cols, int(col) + radius + 1)
+
+            patch.set_xy((col_start, row_start))
+            patch.set_width(col_end - col_start)
+            patch.set_height(row_end - row_start)
             patch.set_visible(True)
 
     def update_learning_plot(self, total_reward: float, total_resources: float) -> None:
@@ -300,6 +371,7 @@ def run_live_training(
     render_every: int = 50,
     fast_mode: bool = False,
     final_demo_episodes: int = 10,
+    show_perception: bool = True,
 ) -> List[Dict]:
     """
     Run many PPO episodes with a persistent live renderer window.
@@ -320,6 +392,8 @@ def run_live_training(
         num_episodes=num_episodes,
         max_possible_reward=max_possible_reward,
         max_resources=num_resources,
+        view_size=env.view_size,
+        show_perception=show_perception,
     )
 
     episode_summaries: List[Dict] = []
