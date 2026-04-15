@@ -10,7 +10,8 @@ from typing import Dict, List, Optional
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.lines import Line2D
-from matplotlib.patches import Circle, Rectangle
+from matplotlib.patches import Circle, Polygon, Rectangle
+from matplotlib.path import Path
 
 from env.gridworld_env import GridWorldEnv
 from testing.communication import CommunicationLayer
@@ -40,13 +41,37 @@ class LiveEpisodeRenderer:
         self.view_size = view_size
         self.show_perception = show_perception
         self.trail_length = 20
+        self.arena_palette = {
+            "void": "#050608",
+            "panel": "#0c0f14",
+            "floor_a": "#232b33",
+            "floor_b": "#1b2229",
+            "floor_outside": "#07090d",
+            "tile_edge": "#2a323a",
+            "wall": "#9ca3af",
+            "wall_glow": "#c7a76a",
+            "agent_0": "#38bdf8",
+            "agent_0_edge": "#0ea5e9",
+            "agent_1": "#f43f5e",
+            "agent_1_edge": "#be123c",
+            "resource": "#8bff63",
+            "resource_edge": "#3b7f2d",
+            "obstacle": "#4b5563",
+            "obstacle_edge": "#6b7280",
+            "trail_0": "#7dd3fc",
+            "trail_1": "#fda4af",
+            "perception_0": "#67e8f9",
+            "perception_1": "#fb7185",
+            "overlay_text": "#f3f4f6",
+            "overlay_box": "#0f172a",
+        }
         self.agent_trails = {
             2: deque(maxlen=self.trail_length),
             3: deque(maxlen=self.trail_length),
         }
 
         plt.ion()
-        self.fig = plt.figure(figsize=(12, 6))
+        self.fig = plt.figure(figsize=(12, 6), facecolor=self.arena_palette["panel"])
         gs = self.fig.add_gridspec(2, 2, width_ratios=[1.1, 1.0], wspace=0.35, hspace=0.35)
         self.ax_grid = self.fig.add_subplot(gs[:, 0])
         self.ax_plot = self.fig.add_subplot(gs[0, 1])
@@ -55,8 +80,11 @@ class LiveEpisodeRenderer:
         rows, cols = initial_grid.shape
         self.grid_rows = rows
         self.grid_cols = cols
+        self.octagon_vertices = self._build_octagon_vertices(rows, cols)
+        self.octagon_path = Path(self.octagon_vertices)
+        self.arena_mask = self._compute_octagon_mask(rows, cols)
         self.ax_grid.set_title("Environment")
-        self.ax_grid.set_facecolor("#eef3ec")
+        self.ax_grid.set_facecolor(self.arena_palette["void"])
         self.ax_grid.set_xlim(0, cols)
         self.ax_grid.set_ylim(rows, 0)
         self.ax_grid.set_aspect("equal")
@@ -65,28 +93,74 @@ class LiveEpisodeRenderer:
         for spine in self.ax_grid.spines.values():
             spine.set_visible(False)
 
-        # Draw a soft tile field once so the world feels more like a simulation map.
-        tile_colors = ("#f6f4ee", "#edf2e8")
+        # Draw a dark arena floor once; outside the octagon is treated as void.
         for row in range(rows):
             for col in range(cols):
+                inside_arena = self.arena_mask[row, col]
+                base_color = (
+                    self.arena_palette["floor_a"]
+                    if (row + col) % 2 == 0
+                    else self.arena_palette["floor_b"]
+                )
                 tile = Rectangle(
                     (col, row),
                     1,
                     1,
-                    facecolor=tile_colors[(row + col) % 2],
-                    edgecolor="#dde5d8",
-                    linewidth=0.3,
+                    facecolor=base_color if inside_arena else self.arena_palette["floor_outside"],
+                    edgecolor=self.arena_palette["tile_edge"] if inside_arena else self.arena_palette["void"],
+                    linewidth=0.35 if inside_arena else 0.0,
                     zorder=0,
                 )
                 self.ax_grid.add_patch(tile)
+
+        # Add a subtle vignette-like dark panel over the whole floor for a more cinematic feel.
+        vignette = np.linspace(0.0, 1.0, 300)
+        vignette = np.outer(
+            np.minimum(vignette, vignette[::-1]),
+            np.minimum(vignette, vignette[::-1]),
+        )
+        vignette_alpha = 0.32 * (1.0 - (vignette / np.max(vignette)))
+        self.ax_grid.imshow(
+            np.zeros_like(vignette),
+            extent=(0, cols, rows, 0),
+            cmap="gray",
+            vmin=0,
+            vmax=1,
+            alpha=vignette_alpha,
+            zorder=0.8,
+            interpolation="bilinear",
+        )
+
+        self.arena_wall_glow = Polygon(
+            self.octagon_vertices,
+            closed=True,
+            fill=False,
+            edgecolor=self.arena_palette["wall_glow"],
+            linewidth=8.0,
+            alpha=0.12,
+            joinstyle="round",
+            zorder=1.7,
+        )
+        self.ax_grid.add_patch(self.arena_wall_glow)
+        self.arena_wall = Polygon(
+            self.octagon_vertices,
+            closed=True,
+            fill=False,
+            edgecolor=self.arena_palette["wall"],
+            linewidth=2.2,
+            alpha=0.95,
+            joinstyle="round",
+            zorder=1.8,
+        )
+        self.ax_grid.add_patch(self.arena_wall)
 
         self.dim_overlay = Rectangle(
             (0, 0),
             cols,
             rows,
-            facecolor="#1f2937",
+            facecolor="#02040a",
             edgecolor="none",
-            alpha=0.18 if show_perception else 0.0,
+            alpha=0.14 if show_perception else 0.0,
             zorder=1,
             visible=show_perception,
         )
@@ -97,10 +171,10 @@ class LiveEpisodeRenderer:
                 (0, 0),
                 1,
                 1,
-                facecolor="#93c5fd",
-                edgecolor="#60a5fa",
+                facecolor=self.arena_palette["perception_0"],
+                edgecolor=self.arena_palette["agent_0"],
                 linewidth=1.0,
-                alpha=0.22,
+                alpha=0.16,
                 zorder=2.5,
                 visible=False,
             ),
@@ -108,10 +182,10 @@ class LiveEpisodeRenderer:
                 (0, 0),
                 1,
                 1,
-                facecolor="#fca5a5",
-                edgecolor="#f87171",
+                facecolor=self.arena_palette["perception_1"],
+                edgecolor=self.arena_palette["agent_1"],
                 linewidth=1.0,
-                alpha=0.22,
+                alpha=0.16,
                 zorder=2.5,
                 visible=False,
             ),
@@ -124,9 +198,9 @@ class LiveEpisodeRenderer:
             resource_patch = Circle(
                 (-10.0, -10.0),
                 radius=0.18,
-                facecolor="#4fae68",
-                edgecolor="#2f6f41",
-                linewidth=1.0,
+                facecolor=self.arena_palette["resource"],
+                edgecolor=self.arena_palette["resource_edge"],
+                linewidth=1.2,
                 zorder=3,
                 visible=False,
             )
@@ -140,9 +214,9 @@ class LiveEpisodeRenderer:
                     (col + 0.12, row + 0.12),
                     0.76,
                     0.76,
-                    facecolor="#4b5563",
-                    edgecolor="#374151",
-                    linewidth=0.8,
+                    facecolor=self.arena_palette["obstacle"],
+                    edgecolor=self.arena_palette["obstacle_edge"],
+                    linewidth=1.0,
                     zorder=2,
                     visible=False,
                 )
@@ -153,18 +227,18 @@ class LiveEpisodeRenderer:
             2: Circle(
                 (0.5, 0.5),
                 radius=0.28,
-                facecolor="#3b82f6",
-                edgecolor="#1d4ed8",
-                linewidth=1.5,
+                facecolor=self.arena_palette["agent_0"],
+                edgecolor=self.arena_palette["agent_0_edge"],
+                linewidth=1.8,
                 zorder=4,
                 visible=False,
             ),
             3: Circle(
                 (0.5, 0.5),
                 radius=0.28,
-                facecolor="#ef4444",
-                edgecolor="#b91c1c",
-                linewidth=1.5,
+                facecolor=self.arena_palette["agent_1"],
+                edgecolor=self.arena_palette["agent_1_edge"],
+                linewidth=1.8,
                 zorder=4,
                 visible=False,
             ),
@@ -173,8 +247,8 @@ class LiveEpisodeRenderer:
             self.ax_grid.add_patch(patch)
 
         trail_colors = {
-            2: "#93c5fd",
-            3: "#fca5a5",
+            2: self.arena_palette["trail_0"],
+            3: self.arena_palette["trail_1"],
         }
         self.trail_patches = {
             2: [],
@@ -195,21 +269,24 @@ class LiveEpisodeRenderer:
                 self.ax_grid.add_patch(trail_patch)
 
         legend_handles = [
-            Line2D([0], [0], marker="o", color="none", markerfacecolor="#3b82f6", markeredgecolor="#1d4ed8", markersize=9, label="Agent 0"),
-            Line2D([0], [0], marker="o", color="none", markerfacecolor="#ef4444", markeredgecolor="#b91c1c", markersize=9, label="Agent 1"),
-            Line2D([0], [0], marker="o", color="none", markerfacecolor="#4fae68", markeredgecolor="#2f6f41", markersize=7, label="Resource"),
-            Rectangle((0, 0), 1, 1, facecolor="#4b5563", edgecolor="#374151", label="Obstacle"),
+            Line2D([0], [0], marker="o", color="none", markerfacecolor=self.arena_palette["agent_0"], markeredgecolor=self.arena_palette["agent_0_edge"], markersize=9, label="Agent 0"),
+            Line2D([0], [0], marker="o", color="none", markerfacecolor=self.arena_palette["agent_1"], markeredgecolor=self.arena_palette["agent_1_edge"], markersize=9, label="Agent 1"),
+            Line2D([0], [0], marker="o", color="none", markerfacecolor=self.arena_palette["resource"], markeredgecolor=self.arena_palette["resource_edge"], markersize=7, label="Resource"),
+            Rectangle((0, 0), 1, 1, facecolor=self.arena_palette["obstacle"], edgecolor=self.arena_palette["obstacle_edge"], label="Obstacle"),
         ]
         if show_perception:
             legend_handles.append(
-                Rectangle((0, 0), 1, 1, facecolor="#bfdbfe", edgecolor="#60a5fa", alpha=0.35, label="Perception")
+                Rectangle((0, 0), 1, 1, facecolor=self.arena_palette["perception_0"], edgecolor=self.arena_palette["agent_0"], alpha=0.25, label="Perception")
             )
         self.ax_grid.legend(
             handles=legend_handles,
             loc="upper center",
             bbox_to_anchor=(0.5, 1.04),
             ncol=3,
-            frameon=False,
+            frameon=True,
+            facecolor="#0b1016",
+            edgecolor="#313842",
+            labelcolor="#d1d5db",
             fontsize=9,
         )
         self.text = self.ax_grid.text(
@@ -219,8 +296,8 @@ class LiveEpisodeRenderer:
             transform=self.ax_grid.transAxes,
             ha="center",
             fontsize=12,
-            color="black",
-            bbox=dict(facecolor="white", alpha=0.8),
+            color=self.arena_palette["overlay_text"],
+            bbox=dict(facecolor=self.arena_palette["overlay_box"], edgecolor="#334155", boxstyle="round,pad=0.35", alpha=0.88),
         )
 
         self.episode_rewards: List[float] = []
@@ -238,7 +315,7 @@ class LiveEpisodeRenderer:
         )
         self.ax_plot.set_xlim(0, max(1, num_episodes))
         self.ax_plot.set_ylim(0, max(1.0, max_possible_reward))
-        self.ax_plot.set_title("Learning Progress")
+        self._style_ui_axis(self.ax_plot, "Learning Progress")
         self.ax_plot.set_xlabel("Episode")
         self.ax_plot.set_ylabel("Smoothed Value")
         self.ax_plot.grid(True, alpha=0.3)
@@ -260,7 +337,7 @@ class LiveEpisodeRenderer:
             label="Entropy (Exploration)",
         )
         self.ax_ppo.set_xlim(0, max(1, num_episodes))
-        self.ax_ppo.set_title("PPO Training Dynamics")
+        self._style_ui_axis(self.ax_ppo, "PPO Training Dynamics")
         self.ax_ppo.set_xlabel("Episode")
         self.ax_ppo.set_ylabel("Policy Loss (PPO)", color="tab:red")
         self.ax_ppo.tick_params(axis="y", labelcolor="tab:red")
@@ -274,6 +351,39 @@ class LiveEpisodeRenderer:
 
         self.fig.subplots_adjust(bottom=0.18)
         self._update_environment(initial_grid)
+
+    def _style_ui_axis(self, axis, title: str) -> None:
+        axis.set_facecolor("#11161d")
+        axis.set_title(title, color="#e5e7eb")
+        axis.tick_params(colors="#cbd5e1")
+        axis.xaxis.label.set_color("#cbd5e1")
+        axis.yaxis.label.set_color("#cbd5e1")
+        for spine in axis.spines.values():
+            spine.set_color("#374151")
+
+    def _build_octagon_vertices(self, rows: int, cols: int) -> np.ndarray:
+        inset = 1.5
+        return np.array(
+            [
+                [inset + 1.2, 0.4],
+                [cols - inset - 1.2, 0.4],
+                [cols - 0.4, inset + 1.2],
+                [cols - 0.4, rows - inset - 1.2],
+                [cols - inset - 1.2, rows - 0.4],
+                [inset + 1.2, rows - 0.4],
+                [0.4, rows - inset - 1.2],
+                [0.4, inset + 1.2],
+            ],
+            dtype=float,
+        )
+
+    def _compute_octagon_mask(self, rows: int, cols: int) -> np.ndarray:
+        mask = np.zeros((rows, cols), dtype=bool)
+        for row in range(rows):
+            for col in range(cols):
+                center = (float(col) + 0.5, float(row) + 0.5)
+                mask[row, col] = bool(self.octagon_path.contains_point(center))
+        return mask
 
     def update(
         self,
@@ -293,12 +403,16 @@ class LiveEpisodeRenderer:
 
         obstacle_mask = grid == 4
         for patch, is_obstacle in zip(self.obstacle_patches, obstacle_mask.flatten()):
-            patch.set_visible(bool(is_obstacle))
+            row = int(patch.get_y() - 0.12)
+            col = int(patch.get_x() - 0.12)
+            patch.set_visible(bool(is_obstacle) and self.arena_mask[row, col])
 
         resource_idx = 0
         for row, col in np.argwhere(grid == 1):
             if resource_idx >= len(self.resource_patches):
                 break
+            if not self.arena_mask[row, col]:
+                continue
             patch = self.resource_patches[resource_idx]
             patch.center = (float(col) + 0.5, float(row) + 0.5)
             patch.set_visible(True)
@@ -315,6 +429,11 @@ class LiveEpisodeRenderer:
                 self._update_trail_patches(agent_value)
                 continue
             row, col = positions[0]
+            if not self.arena_mask[row, col]:
+                patch.set_visible(False)
+                self.agent_trails[agent_value].clear()
+                self._update_trail_patches(agent_value)
+                continue
             self._append_trail_position(agent_value, int(row), int(col))
             patch.center = (float(col) + 0.5, float(row) + 0.5)
             patch.set_visible(True)
@@ -340,6 +459,8 @@ class LiveEpisodeRenderer:
         for idx, (row, col) in enumerate(reversed(visible_trail)):
             if idx >= len(patches):
                 break
+            if not self.arena_mask[row, col]:
+                continue
             fade = max(0.12, 0.55 * (1.0 - idx / max(len(visible_trail), 1)))
             patch = patches[idx]
             patch.center = (float(col) + 0.5, float(row) + 0.5)
@@ -363,6 +484,10 @@ class LiveEpisodeRenderer:
             col_start = max(0, int(col) - radius)
             col_end = min(self.grid_cols, int(col) + radius + 1)
 
+            visible_mask = self.arena_mask[row_start:row_end, col_start:col_end]
+            if not np.any(visible_mask):
+                patch.set_visible(False)
+                continue
             patch.set_xy((col_start, row_start))
             patch.set_width(col_end - col_start)
             patch.set_height(row_end - row_start)
