@@ -28,6 +28,7 @@ class GridWorldEnv(ParallelEnv):
         self,
         grid_size: int = 15,
         num_resources: int = 10,
+        num_obstacles: int = 12,
         max_steps: int = 200,
         view_size: int = 5,
         partial_observability: bool = True,
@@ -39,6 +40,7 @@ class GridWorldEnv(ParallelEnv):
         Args:
             grid_size: Size of the square grid (default: 15)
             num_resources: Number of resources to spawn (default: 10)
+            num_obstacles: Number of obstacle cells to place (default: 12)
             max_steps: Maximum steps per episode (default: 200)
             view_size: Side length of the local observation window (default: 5)
             partial_observability: If True, return a local view per agent; if False,
@@ -47,6 +49,7 @@ class GridWorldEnv(ParallelEnv):
         """
         self.grid_size = grid_size
         self.num_resources = num_resources
+        self.num_obstacles = num_obstacles
         self.max_steps = max_steps
         self.view_size = view_size
         self.partial_observability = partial_observability
@@ -56,10 +59,11 @@ class GridWorldEnv(ParallelEnv):
         self.agents = ["agent_0", "agent_1"]
         self.possible_agents = self.agents.copy()
 
-        # Grid encoding: 0=empty, 1=resource, 2=agent_0, 3=agent_1
+        # Grid encoding: 0=empty, 1=resource, 2=agent_0, 3=agent_1, 4=obstacle
         self.grid = None
         self.agent_positions = {}
         self.resource_positions = []
+        self.obstacle_positions = []
         self.step_count = 0
 
         # Logging data
@@ -81,7 +85,7 @@ class GridWorldEnv(ParallelEnv):
         # - partial observability: (view_size, view_size)
         obs_shape = (view_size, view_size) if partial_observability else (grid_size, grid_size)
         self.observation_spaces = {
-            agent: Box(low=0, high=3, shape=obs_shape, dtype=np.int32)
+            agent: Box(low=0, high=4, shape=obs_shape, dtype=np.int32)
             for agent in self.agents
         }
 
@@ -119,13 +123,23 @@ class GridWorldEnv(ParallelEnv):
             "agent_1": 0,
         }
 
+        # Place obstacles first so agents/resources avoid blocked cells.
+        self.obstacle_positions = []
+        obstacle_count = 0
+        while obstacle_count < self.num_obstacles:
+            pos = (np.random.randint(0, self.grid_size), np.random.randint(0, self.grid_size))
+            if self.grid[pos[0], pos[1]] == 0:
+                self.grid[pos[0], pos[1]] = 4
+                self.obstacle_positions.append(pos)
+                obstacle_count += 1
+
         # Place agents at random positions
         self.agent_positions = {}
         for i, agent in enumerate(self.agents):
             while True:
                 pos = (np.random.randint(0, self.grid_size), np.random.randint(0, self.grid_size))
                 # Ensure agents don't start on same cell (optional, but cleaner)
-                if pos not in self.agent_positions.values():
+                if pos not in self.agent_positions.values() and self.grid[pos[0], pos[1]] == 0:
                     self.agent_positions[agent] = pos
                     self.grid[pos[0], pos[1]] = 2 + i  # 2 for agent_0, 3 for agent_1
                     break
@@ -137,13 +151,11 @@ class GridWorldEnv(ParallelEnv):
 
         while resource_count < self.num_resources:
             pos = (np.random.randint(0, self.grid_size), np.random.randint(0, self.grid_size))
-            # Don't place resources on agent starting positions
-            if pos not in self.agent_positions.values():
-                if self.grid[pos[0], pos[1]] == 0:  # Empty cell
-                    self.grid[pos[0], pos[1]] = 1  # Resource
-                    self.resource_positions.append(pos)
-                    self.initial_resource_positions.append(pos)
-                    resource_count += 1
+            if pos not in self.agent_positions.values() and self.grid[pos[0], pos[1]] == 0:
+                self.grid[pos[0], pos[1]] = 1  # Resource
+                self.resource_positions.append(pos)
+                self.initial_resource_positions.append(pos)
+                resource_count += 1
 
         # Update heatmaps with initial positions
         for agent in self.agents:
@@ -258,7 +270,10 @@ class GridWorldEnv(ParallelEnv):
         elif action == 4:  # Right
             col = min(self.grid_size - 1, col + 1)
 
-        return (row, col)
+        new_pos = (row, col)
+        if new_pos in self.obstacle_positions:
+            return pos
+        return new_pos
 
     def _get_observations(self) -> Dict[str, np.ndarray]:
         """
@@ -328,4 +343,3 @@ class GridWorldEnv(ParallelEnv):
             List of (row, col) tuples
         """
         return self.initial_resource_positions.copy()
-
