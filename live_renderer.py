@@ -4,6 +4,7 @@ Persistent real-time renderer for continuous PPO training episodes.
 
 from __future__ import annotations
 
+from collections import deque
 from typing import Dict, List, Optional
 
 import matplotlib.pyplot as plt
@@ -38,6 +39,11 @@ class LiveEpisodeRenderer:
         self.max_resources = max_resources
         self.view_size = view_size
         self.show_perception = show_perception
+        self.trail_length = 20
+        self.agent_trails = {
+            2: deque(maxlen=self.trail_length),
+            3: deque(maxlen=self.trail_length),
+        }
 
         plt.ion()
         self.fig = plt.figure(figsize=(12, 6))
@@ -166,6 +172,28 @@ class LiveEpisodeRenderer:
         for patch in self.agent_patches.values():
             self.ax_grid.add_patch(patch)
 
+        trail_colors = {
+            2: "#93c5fd",
+            3: "#fca5a5",
+        }
+        self.trail_patches = {
+            2: [],
+            3: [],
+        }
+        for agent_value, color in trail_colors.items():
+            for _ in range(self.trail_length):
+                trail_patch = Circle(
+                    (-10.0, -10.0),
+                    radius=0.12,
+                    facecolor=color,
+                    edgecolor="none",
+                    alpha=0.0,
+                    zorder=3.6,
+                    visible=False,
+                )
+                self.trail_patches[agent_value].append(trail_patch)
+                self.ax_grid.add_patch(trail_patch)
+
         legend_handles = [
             Line2D([0], [0], marker="o", color="none", markerfacecolor="#3b82f6", markeredgecolor="#1d4ed8", markersize=9, label="Agent 0"),
             Line2D([0], [0], marker="o", color="none", markerfacecolor="#ef4444", markeredgecolor="#b91c1c", markersize=9, label="Agent 1"),
@@ -283,9 +311,39 @@ class LiveEpisodeRenderer:
             positions = np.argwhere(grid == agent_value)
             if len(positions) == 0:
                 patch.set_visible(False)
+                self.agent_trails[agent_value].clear()
+                self._update_trail_patches(agent_value)
                 continue
             row, col = positions[0]
+            self._append_trail_position(agent_value, int(row), int(col))
             patch.center = (float(col) + 0.5, float(row) + 0.5)
+            patch.set_visible(True)
+
+    def _append_trail_position(self, agent_value: int, row: int, col: int) -> None:
+        trail = self.agent_trails[agent_value]
+        new_position = (row, col)
+        if not trail or trail[-1] != new_position:
+            trail.append(new_position)
+        self._update_trail_patches(agent_value)
+
+    def _update_trail_patches(self, agent_value: int) -> None:
+        trail = list(self.agent_trails[agent_value])
+        patches = self.trail_patches[agent_value]
+        visible_trail = trail[:-1] if len(trail) > 1 else []
+
+        for patch in patches:
+            patch.set_visible(False)
+
+        if not visible_trail:
+            return
+
+        for idx, (row, col) in enumerate(reversed(visible_trail)):
+            if idx >= len(patches):
+                break
+            fade = max(0.12, 0.55 * (1.0 - idx / max(len(visible_trail), 1)))
+            patch = patches[idx]
+            patch.center = (float(col) + 0.5, float(row) + 0.5)
+            patch.set_alpha(fade)
             patch.set_visible(True)
 
     def _update_perception(self, grid: np.ndarray) -> None:
