@@ -33,6 +33,7 @@ class LiveEpisodeRenderer:
         view_size: int,
         show_perception: bool = True,
         show_communication: bool = True,
+        show_resource_animation: bool = True,
     ):
         self.smoothing_window = 50
         self.plot_update_every = 10
@@ -42,9 +43,11 @@ class LiveEpisodeRenderer:
         self.view_size = view_size
         self.show_perception = show_perception
         self.show_communication = show_communication
+        self.show_resource_animation = show_resource_animation
         self.trail_length = 20
         self.perception_range = 3
         self.communication_fade_steps = 4
+        self.resource_anim_steps = 5
         self.agent_facing = {
             2: (0, 1),   # right
             3: (0, -1),  # left
@@ -76,6 +79,8 @@ class LiveEpisodeRenderer:
             "comm_1": "#fb7185",
             "comm_0_alt": "#22d3ee",
             "comm_1_alt": "#fb923c",
+            "resource_glow": "#bef264",
+            "resource_flash": "#fde68a",
         }
         self.agent_trails = {
             2: deque(maxlen=self.trail_length),
@@ -85,6 +90,9 @@ class LiveEpisodeRenderer:
             2: {"ttl": 0, "receiver": 3, "preview": ""},
             3: {"ttl": 0, "receiver": 2, "preview": ""},
         }
+        self.previous_resource_positions: set[tuple[int, int]] = set()
+        self.resource_spawn_state: Dict[tuple[int, int], int] = {}
+        self.resource_collect_state: Dict[tuple[int, int], int] = {}
 
         plt.ion()
         self.fig = plt.figure(figsize=(12, 6), facecolor=self.arena_palette["panel"])
@@ -278,6 +286,32 @@ class LiveEpisodeRenderer:
             self.resource_patches.append(resource_patch)
             self.ax_grid.add_patch(resource_patch)
 
+        self.resource_glow_patches: List[Circle] = []
+        self.resource_collect_patches: List[Circle] = []
+        for _ in range(max_resources):
+            glow_patch = Circle(
+                (-10.0, -10.0),
+                radius=0.34,
+                facecolor=self.arena_palette["resource_glow"],
+                edgecolor="none",
+                alpha=0.0,
+                zorder=2.85,
+                visible=False,
+            )
+            collect_patch = Circle(
+                (-10.0, -10.0),
+                radius=0.18,
+                facecolor=self.arena_palette["resource_flash"],
+                edgecolor="none",
+                alpha=0.0,
+                zorder=3.05,
+                visible=False,
+            )
+            self.resource_glow_patches.append(glow_patch)
+            self.resource_collect_patches.append(collect_patch)
+            self.ax_grid.add_patch(glow_patch)
+            self.ax_grid.add_patch(collect_patch)
+
         self.obstacle_patches: List[Rectangle] = []
         for row in range(rows):
             for col in range(cols):
@@ -352,6 +386,10 @@ class LiveEpisodeRenderer:
         if show_communication:
             legend_handles.append(
                 Line2D([0], [0], color=self.arena_palette["comm_0"], linewidth=1.6, label="Signal")
+            )
+        if show_resource_animation:
+            legend_handles.append(
+                Line2D([0], [0], marker="o", color="none", markerfacecolor=self.arena_palette["resource_flash"], markeredgecolor=self.arena_palette["resource_glow"], markersize=8, label="Spawn Pulse")
             )
         self.ax_grid.legend(
             handles=legend_handles,
@@ -483,6 +521,7 @@ class LiveEpisodeRenderer:
     ) -> None:
         self._update_facing(actions)
         self._update_perception(grid)
+        self._update_resource_animation_state(grid)
 
         obstacle_mask = grid == 4
         for patch, is_obstacle in zip(self.obstacle_patches, obstacle_mask.flatten()):
@@ -498,11 +537,21 @@ class LiveEpisodeRenderer:
                 continue
             patch = self.resource_patches[resource_idx]
             patch.center = (float(col) + 0.5, float(row) + 0.5)
+            spawn_ttl = self.resource_spawn_state.get((row, col))
+            if self.show_resource_animation and spawn_ttl is not None:
+                progress = 1.0 - ((spawn_ttl - 1) / float(self.resource_anim_steps))
+                patch.set_radius(0.08 + 0.10 * progress)
+                patch.set_alpha(0.45 + 0.55 * progress)
+            else:
+                patch.set_radius(0.18)
+                patch.set_alpha(1.0)
             patch.set_visible(True)
             resource_idx += 1
 
         for idx in range(resource_idx, len(self.resource_patches)):
             self.resource_patches[idx].set_visible(False)
+
+        self._apply_resource_animations()
 
         current_positions: Dict[int, tuple[int, int]] = {}
         for agent_value, patch in self.agent_patches.items():
@@ -524,6 +573,64 @@ class LiveEpisodeRenderer:
             current_positions[agent_value] = (int(row), int(col))
 
         self._update_communication_visuals(current_positions, communication_events)
+
+    def _update_resource_animation_state(self, grid: np.ndarray) -> None:
+        if not self.show_resource_animation:
+            self.previous_resource_positions = set(map(tuple, np.argwhere(grid == 1)))
+            self.resource_spawn_state.clear()
+            self.resource_collect_state.clear()
+            return
+
+        current_resources = {tuple(pos) for pos in np.argwhere(grid == 1)}
+        spawned = current_resources - self.previous_resource_positions
+        collected = self.previous_resource_positions - current_resources
+
+        for pos in spawned:
+            self.resource_spawn_state[pos] = self.resource_anim_steps
+        for pos in collected:
+            self.resource_collect_state[pos] = self.resource_anim_steps
+
+        self.previous_resource_positions = current_resources
+
+    def _apply_resource_animations(self) -> None:
+        for patch in self.resource_glow_patches:
+            patch.set_visible(False)
+        for patch in self.resource_collect_patches:
+            patch.set_visible(False)
+
+        if not self.show_resource_animation:
+            return
+
+        active_spawns = list(self.resource_spawn_state.items())[: len(self.resource_glow_patches)]
+        for idx, (pos, ttl) in enumerate(active_spawns):
+            row, col = pos
+            if not self.arena_mask[row, col]:
+                continue
+            progress = 1.0 - ((ttl - 1) / float(self.resource_anim_steps))
+            glow_patch = self.resource_glow_patches[idx]
+            glow_patch.center = (float(col) + 0.5, float(row) + 0.5)
+            glow_patch.set_radius(0.18 + 0.22 * progress)
+            glow_patch.set_alpha(0.35 * (1.0 - progress / 1.2))
+            glow_patch.set_visible(True)
+
+        active_collects = list(self.resource_collect_state.items())[: len(self.resource_collect_patches)]
+        for idx, (pos, ttl) in enumerate(active_collects):
+            row, col = pos
+            if not self.arena_mask[row, col]:
+                continue
+            progress = 1.0 - ((ttl - 1) / float(self.resource_anim_steps))
+            collect_patch = self.resource_collect_patches[idx]
+            collect_patch.center = (float(col) + 0.5, float(row) + 0.5)
+            collect_patch.set_radius(0.16 + 0.18 * progress)
+            collect_patch.set_alpha(0.42 * (1.0 - progress))
+            collect_patch.set_visible(True)
+
+        self.resource_spawn_state = {
+            pos: ttl - 1 for pos, ttl in self.resource_spawn_state.items() if ttl > 1
+        }
+        self.resource_collect_state = {
+            pos: ttl - 1 for pos, ttl in self.resource_collect_state.items() if ttl > 1
+        }
 
     def _append_trail_position(self, agent_value: int, row: int, col: int) -> None:
         trail = self.agent_trails[agent_value]
