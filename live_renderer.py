@@ -32,6 +32,7 @@ class LiveEpisodeRenderer:
         max_resources: int,
         view_size: int,
         show_perception: bool = True,
+        show_communication: bool = True,
     ):
         self.smoothing_window = 50
         self.plot_update_every = 10
@@ -40,8 +41,10 @@ class LiveEpisodeRenderer:
         self.max_resources = max_resources
         self.view_size = view_size
         self.show_perception = show_perception
+        self.show_communication = show_communication
         self.trail_length = 20
         self.perception_range = 3
+        self.communication_fade_steps = 4
         self.agent_facing = {
             2: (0, 1),   # right
             3: (0, -1),  # left
@@ -69,10 +72,18 @@ class LiveEpisodeRenderer:
             "perception_1": "#fb7185",
             "overlay_text": "#f3f4f6",
             "overlay_box": "#0f172a",
+            "comm_0": "#67e8f9",
+            "comm_1": "#fb7185",
+            "comm_0_alt": "#22d3ee",
+            "comm_1_alt": "#fb923c",
         }
         self.agent_trails = {
             2: deque(maxlen=self.trail_length),
             3: deque(maxlen=self.trail_length),
+        }
+        self.communication_state = {
+            2: {"ttl": 0, "receiver": 3, "preview": ""},
+            3: {"ttl": 0, "receiver": 2, "preview": ""},
         }
 
         plt.ion()
@@ -205,6 +216,54 @@ class LiveEpisodeRenderer:
                 self.perception_ray_lines[agent_value].append(line)
                 self.ax_grid.add_line(line)
 
+        self.communication_lines = {}
+        self.communication_pulses = {}
+        self.communication_text = {}
+        communication_colors = {
+            2: (self.arena_palette["comm_0"], self.arena_palette["comm_0_alt"]),
+            3: (self.arena_palette["comm_1"], self.arena_palette["comm_1_alt"]),
+        }
+        for agent_value, (primary_color, secondary_color) in communication_colors.items():
+            line = Line2D(
+                [],
+                [],
+                color=primary_color,
+                linewidth=1.6,
+                alpha=0.0,
+                solid_capstyle="round",
+                zorder=3.35,
+                visible=False,
+            )
+            self.ax_grid.add_line(line)
+            self.communication_lines[agent_value] = line
+
+            pulse = Circle(
+                (-10.0, -10.0),
+                radius=0.42,
+                fill=False,
+                edgecolor=secondary_color,
+                linewidth=1.6,
+                alpha=0.0,
+                zorder=4.6,
+                visible=False,
+            )
+            self.ax_grid.add_patch(pulse)
+            self.communication_pulses[agent_value] = pulse
+
+            text = self.ax_grid.text(
+                -10.0,
+                -10.0,
+                "",
+                fontsize=7.5,
+                color="#e5e7eb",
+                ha="center",
+                va="center",
+                bbox=dict(facecolor="#111827", edgecolor=primary_color, boxstyle="round,pad=0.2", alpha=0.0),
+                zorder=4.7,
+                visible=False,
+            )
+            self.communication_text[agent_value] = text
+
         self.resource_patches: List[Circle] = []
         for _ in range(max_resources):
             resource_patch = Circle(
@@ -289,6 +348,10 @@ class LiveEpisodeRenderer:
         if show_perception:
             legend_handles.append(
                 Rectangle((0, 0), 1, 1, facecolor=self.arena_palette["perception_0"], edgecolor=self.arena_palette["agent_0"], alpha=0.25, label="Perception")
+            )
+        if show_communication:
+            legend_handles.append(
+                Line2D([0], [0], color=self.arena_palette["comm_0"], linewidth=1.6, label="Signal")
             )
         self.ax_grid.legend(
             handles=legend_handles,
@@ -405,13 +468,19 @@ class LiveEpisodeRenderer:
         step: int,
         render_delay: float,
         actions: Optional[Dict[str, int]] = None,
+        communication_events: Optional[List[Dict[str, object]]] = None,
     ) -> None:
-        self._update_environment(grid, actions=actions)
+        self._update_environment(grid, actions=actions, communication_events=communication_events)
         self.text.set_text(f"Episode {episode}/{num_episodes} | Step {step}")
         self.fig.canvas.draw_idle()
         plt.pause(render_delay)
 
-    def _update_environment(self, grid: np.ndarray, actions: Optional[Dict[str, int]] = None) -> None:
+    def _update_environment(
+        self,
+        grid: np.ndarray,
+        actions: Optional[Dict[str, int]] = None,
+        communication_events: Optional[List[Dict[str, object]]] = None,
+    ) -> None:
         self._update_facing(actions)
         self._update_perception(grid)
 
@@ -435,6 +504,7 @@ class LiveEpisodeRenderer:
         for idx in range(resource_idx, len(self.resource_patches)):
             self.resource_patches[idx].set_visible(False)
 
+        current_positions: Dict[int, tuple[int, int]] = {}
         for agent_value, patch in self.agent_patches.items():
             positions = np.argwhere(grid == agent_value)
             if len(positions) == 0:
@@ -451,6 +521,9 @@ class LiveEpisodeRenderer:
             self._append_trail_position(agent_value, int(row), int(col))
             patch.center = (float(col) + 0.5, float(row) + 0.5)
             patch.set_visible(True)
+            current_positions[agent_value] = (int(row), int(col))
+
+        self._update_communication_visuals(current_positions, communication_events)
 
     def _append_trail_position(self, agent_value: int, row: int, col: int) -> None:
         trail = self.agent_trails[agent_value]
@@ -585,6 +658,87 @@ class LiveEpisodeRenderer:
 
         return rays
 
+    def _update_communication_visuals(
+        self,
+        positions: Dict[int, tuple[int, int]],
+        communication_events: Optional[List[Dict[str, object]]],
+    ) -> None:
+        if not self.show_communication:
+            for agent_value in self.communication_lines.keys():
+                self.communication_lines[agent_value].set_visible(False)
+                self.communication_pulses[agent_value].set_visible(False)
+                self.communication_text[agent_value].set_visible(False)
+            return
+
+        if communication_events:
+            for event in communication_events:
+                sender = int(event["sender"])
+                receiver = int(event["receiver"])
+                preview = str(event.get("preview", "msg"))
+                self.communication_state[sender]["ttl"] = self.communication_fade_steps
+                self.communication_state[sender]["receiver"] = receiver
+                self.communication_state[sender]["preview"] = preview
+
+        for sender, state in self.communication_state.items():
+            line = self.communication_lines[sender]
+            pulse = self.communication_pulses[sender]
+            text = self.communication_text[sender]
+
+            if state["ttl"] <= 0 or sender not in positions or state["receiver"] not in positions:
+                line.set_visible(False)
+                pulse.set_visible(False)
+                text.set_visible(False)
+                continue
+
+            alpha = state["ttl"] / float(self.communication_fade_steps)
+            sender_row, sender_col = positions[sender]
+            receiver_row, receiver_col = positions[int(state["receiver"])]
+            sx = float(sender_col) + 0.5
+            sy = float(sender_row) + 0.5
+            rx = float(receiver_col) + 0.5
+            ry = float(receiver_row) + 0.5
+
+            curve_x, curve_y = self._build_signal_curve((sx, sy), (rx, ry), sender)
+            line.set_data(curve_x, curve_y)
+            line.set_alpha(0.15 + 0.45 * alpha)
+            line.set_visible(True)
+
+            pulse.center = (sx, sy)
+            pulse.set_radius(0.28 + 0.22 * alpha)
+            pulse.set_alpha(0.15 + 0.5 * alpha)
+            pulse.set_visible(True)
+
+            text.set_position((sx, sy - 0.55))
+            text.set_text(str(state["preview"]))
+            text.get_bbox_patch().set_alpha(0.2 + 0.45 * alpha)
+            text.set_alpha(0.55 + 0.35 * alpha)
+            text.set_visible(True)
+
+            state["ttl"] -= 1
+
+    def _build_signal_curve(
+        self,
+        sender_pos: tuple[float, float],
+        receiver_pos: tuple[float, float],
+        sender: int,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        sx, sy = sender_pos
+        rx, ry = receiver_pos
+        mid_x = (sx + rx) / 2.0
+        mid_y = (sy + ry) / 2.0
+        dx = rx - sx
+        dy = ry - sy
+        distance = max(np.hypot(dx, dy), 1e-6)
+        perp_x = -dy / distance
+        perp_y = dx / distance
+        bend = 0.18 if sender == 2 else -0.18
+        control_x = mid_x + perp_x * distance * bend
+        control_y = mid_y + perp_y * distance * bend
+        t = np.linspace(0.0, 1.0, 20)
+        curve_x = (1 - t) ** 2 * sx + 2 * (1 - t) * t * control_x + t**2 * rx
+        curve_y = (1 - t) ** 2 * sy + 2 * (1 - t) * t * control_y + t**2 * ry
+        return curve_x, curve_y
+
     def update_learning_plot(self, total_reward: float, total_resources: float) -> None:
         self.episode_rewards.append(float(total_reward))
         self.episode_resources.append(float(total_resources))
@@ -647,6 +801,7 @@ def run_live_training(
     fast_mode: bool = False,
     final_demo_episodes: int = 10,
     show_perception: bool = True,
+    show_communication: bool = True,
 ) -> List[Dict]:
     """
     Run many PPO episodes with a persistent live renderer window.
@@ -669,6 +824,7 @@ def run_live_training(
         max_resources=num_resources,
         view_size=env.view_size,
         show_perception=show_perception,
+        show_communication=show_communication,
     )
 
     episode_summaries: List[Dict] = []
@@ -697,7 +853,15 @@ def run_live_training(
         total_shaped_reward = 0.0
 
         if render_episode:
-            renderer.update(env.grid.copy(), episode_label, num_episodes, 0, render_delay, actions=None)
+            renderer.update(
+                env.grid.copy(),
+                episode_label,
+                num_episodes,
+                0,
+                render_delay,
+                actions=None,
+                communication_events=None,
+            )
 
         for step in range(max_steps):
             actions: Dict[str, int] = {}
@@ -745,9 +909,21 @@ def run_live_training(
                         value=step_values[agent_id],
                     )
 
+            communication_events = None
             if comm_layer is not None:
-                comm_layer.update_messages_after_step()
+                sent_messages = comm_layer.update_messages_after_step()
                 obs = comm_layer.build_augment_observation(raw_next_obs)
+                communication_events = []
+                for sender_id, msg in sent_messages.items():
+                    receiver_id = next(agent for agent in env.agents if agent != sender_id)
+                    preview = f"{int(msg[1]):+d},{int(msg[2]):+d},{int(msg[3])}"
+                    communication_events.append(
+                        {
+                            "sender": 2 if sender_id == "agent_0" else 3,
+                            "receiver": 2 if receiver_id == "agent_0" else 3,
+                            "preview": preview,
+                        }
+                    )
             else:
                 obs = raw_next_obs
 
@@ -759,6 +935,7 @@ def run_live_training(
                     step + 1,
                     render_delay,
                     actions=actions,
+                    communication_events=communication_events,
                 )
 
             if all(done_flags.values()):

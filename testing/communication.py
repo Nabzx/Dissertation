@@ -137,7 +137,7 @@ class CommunicationLayer:
             augmented[agent] = np.concatenate([flat, msg], axis=0)
         return augmented
 
-    def update_messages_after_step(self) -> None:
+    def update_messages_after_step(self) -> Dict[str, np.ndarray]:
         """
         After the environment step, compute *new* messages for each agent
         and deliver them to the other agent. These messages will be used
@@ -154,3 +154,4 @@ class CommunicationLayer:
                     continue
                 self.state.last_messages[other] = new_messages[agent].copy()
 
+        return new_messages
