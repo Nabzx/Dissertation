@@ -95,11 +95,12 @@ class LiveEpisodeRenderer:
         self.resource_collect_state: Dict[tuple[int, int], int] = {}
 
         plt.ion()
-        self.fig = plt.figure(figsize=(12, 6), facecolor=self.arena_palette["panel"])
-        gs = self.fig.add_gridspec(2, 2, width_ratios=[1.1, 1.0], wspace=0.35, hspace=0.35)
+        self.fig = plt.figure(figsize=(13.5, 6.4), facecolor=self.arena_palette["panel"])
+        gs = self.fig.add_gridspec(2, 3, width_ratios=[1.15, 0.48, 1.0], wspace=0.28, hspace=0.35)
         self.ax_grid = self.fig.add_subplot(gs[:, 0])
-        self.ax_plot = self.fig.add_subplot(gs[0, 1])
-        self.ax_ppo = self.fig.add_subplot(gs[1, 1])
+        self.ax_hud = self.fig.add_subplot(gs[:, 1])
+        self.ax_plot = self.fig.add_subplot(gs[0, 2])
+        self.ax_ppo = self.fig.add_subplot(gs[1, 2])
 
         rows, cols = initial_grid.shape
         self.grid_rows = rows
@@ -116,6 +117,8 @@ class LiveEpisodeRenderer:
         self.ax_grid.set_yticks([])
         for spine in self.ax_grid.spines.values():
             spine.set_visible(False)
+
+        self._setup_hud_axis()
 
         # Draw a dark arena floor once; outside the octagon is treated as void.
         for row in range(rows):
@@ -474,6 +477,118 @@ class LiveEpisodeRenderer:
         for spine in axis.spines.values():
             spine.set_color("#374151")
 
+    def _setup_hud_axis(self) -> None:
+        self.ax_hud.set_facecolor("#0b1016")
+        self.ax_hud.set_xticks([])
+        self.ax_hud.set_yticks([])
+        self.ax_hud.set_xlim(0, 1)
+        self.ax_hud.set_ylim(0, 1)
+        for spine in self.ax_hud.spines.values():
+            spine.set_visible(False)
+
+        self.ax_hud.text(
+            0.08,
+            0.97,
+            "Arena HUD",
+            color="#f3f4f6",
+            fontsize=13,
+            fontweight="bold",
+            va="top",
+        )
+        self.ax_hud.add_patch(
+            Rectangle((0.06, 0.89), 0.88, 0.0018, facecolor="#334155", edgecolor="none", alpha=0.9)
+        )
+
+        self.hud_episode_text = self.ax_hud.text(
+            0.08, 0.85, "", color="#cbd5e1", fontsize=10.5, va="top"
+        )
+        self.hud_reward_text = self.ax_hud.text(
+            0.08, 0.79, "", color="#cbd5e1", fontsize=10, va="top"
+        )
+
+        card_specs = {
+            "agent_0": {"y": 0.43, "accent": self.arena_palette["agent_0"], "edge": self.arena_palette["agent_0_edge"], "title": "Agent 0"},
+            "agent_1": {"y": 0.07, "accent": self.arena_palette["agent_1"], "edge": self.arena_palette["agent_1_edge"], "title": "Agent 1"},
+        }
+        self.hud_agent_text = {}
+        for agent_id, spec in card_specs.items():
+            self.ax_hud.add_patch(
+                Rectangle(
+                    (0.06, spec["y"]),
+                    0.88,
+                    0.28,
+                    facecolor="#111827",
+                    edgecolor="#1f2937",
+                    linewidth=1.1,
+                    zorder=0.5,
+                )
+            )
+            self.ax_hud.add_patch(
+                Rectangle(
+                    (0.06, spec["y"]),
+                    0.018,
+                    0.28,
+                    facecolor=spec["accent"],
+                    edgecolor="none",
+                    zorder=0.6,
+                )
+            )
+            self.ax_hud.text(
+                0.1,
+                spec["y"] + 0.245,
+                spec["title"],
+                color=spec["accent"],
+                fontsize=11,
+                fontweight="bold",
+                va="top",
+            )
+            self.hud_agent_text[agent_id] = self.ax_hud.text(
+                0.1,
+                spec["y"] + 0.205,
+                "",
+                color="#e5e7eb",
+                fontsize=9.3,
+                va="top",
+                linespacing=1.55,
+            )
+
+    def update_hud(self, hud_state: Optional[Dict[str, object]]) -> None:
+        if hud_state is None:
+            self.hud_episode_text.set_text("")
+            self.hud_reward_text.set_text("")
+            for text in self.hud_agent_text.values():
+                text.set_text("")
+            return
+
+        episode = hud_state.get("episode", 0)
+        total_episodes = hud_state.get("total_episodes", 0)
+        step = hud_state.get("step", 0)
+        phase = hud_state.get("phase", "Training")
+        episode_reward = float(hud_state.get("episode_reward", 0.0))
+        self.hud_episode_text.set_text(
+            f"{phase}\nEpisode {episode}/{total_episodes}\nStep {step}"
+        )
+        self.hud_reward_text.set_text(f"Episode Reward: {episode_reward:.2f}")
+
+        agent_states = hud_state.get("agents", {})
+        for agent_id in ["agent_0", "agent_1"]:
+            info = agent_states.get(agent_id, {})
+            resources = int(info.get("resources", 0))
+            cumulative = int(info.get("cumulative_resources", 0))
+            position = info.get("position", ("-", "-"))
+            facing = info.get("facing", "unknown")
+            comm_status = info.get("communication", "offline")
+            status = info.get("status", "Active")
+            action = info.get("recent_action", "n/a")
+            self.hud_agent_text[agent_id].set_text(
+                f"Resources: {resources} (run {cumulative})\n"
+                f"Position: {position}\n"
+                f"Facing: {facing}\n"
+                f"Comms: {comm_status}\n"
+                f"Status: {status}\n"
+                f"Action: {action}"
+            )
+
     def _build_octagon_vertices(self, rows: int, cols: int) -> np.ndarray:
         inset = 1.5
         return np.array(
@@ -507,9 +622,11 @@ class LiveEpisodeRenderer:
         render_delay: float,
         actions: Optional[Dict[str, int]] = None,
         communication_events: Optional[List[Dict[str, object]]] = None,
+        hud_state: Optional[Dict[str, object]] = None,
     ) -> None:
         self._update_environment(grid, actions=actions, communication_events=communication_events)
         self.text.set_text(f"Episode {episode}/{num_episodes} | Step {step}")
+        self.update_hud(hud_state)
         self.fig.canvas.draw_idle()
         plt.pause(render_delay)
 
@@ -937,6 +1054,17 @@ def run_live_training(
     episode_summaries: List[Dict] = []
     recent_rewards: List[float] = []
     recent_resources: List[int] = []
+    cumulative_resources_run = {
+        "agent_0": 0,
+        "agent_1": 0,
+    }
+    action_labels = {
+        0: "stay",
+        1: "up",
+        2: "down",
+        3: "left",
+        4: "right",
+    }
 
     def run_live_episode(
         episode_seed: int,
@@ -944,6 +1072,56 @@ def run_live_training(
         episode_label: int,
         train_policy: bool = True,
     ) -> Dict:
+        def facing_label(agent_id: str) -> str:
+            agent_value = 2 if agent_id == "agent_0" else 3
+            facing = renderer.agent_facing.get(agent_value, (0, 1))
+            facing_map = {
+                (-1, 0): "up",
+                (1, 0): "down",
+                (0, -1): "left",
+                (0, 1): "right",
+            }
+            return facing_map.get(tuple(facing), "unknown")
+
+        def build_hud_state(
+            step_idx: int,
+            actions_map: Optional[Dict[str, int]],
+            communication_events: Optional[List[Dict[str, object]]],
+            phase: str,
+        ) -> Dict[str, object]:
+            resources_now = env.get_resources_collected()
+            comm_lookup = {
+                "agent_0": "idle",
+                "agent_1": "idle",
+            }
+            if communication_events:
+                for event in communication_events:
+                    sender_id = "agent_0" if int(event["sender"]) == 2 else "agent_1"
+                    preview = str(event.get("preview", "msg"))
+                    comm_lookup[sender_id] = f"sending {preview}"
+
+            agents_state = {}
+            for agent_id in env.agents:
+                position = env.agent_positions.get(agent_id, ("-", "-"))
+                agents_state[agent_id] = {
+                    "resources": resources_now.get(agent_id, 0),
+                    "cumulative_resources": cumulative_resources_run[agent_id] + resources_now.get(agent_id, 0),
+                    "position": position,
+                    "facing": facing_label(agent_id),
+                    "communication": comm_lookup[agent_id] if use_communication else "disabled",
+                    "status": "Active",
+                    "recent_action": action_labels.get(actions_map.get(agent_id, 0), "n/a") if actions_map else "n/a",
+                }
+
+            return {
+                "phase": phase,
+                "episode": episode_label,
+                "total_episodes": num_episodes,
+                "step": step_idx,
+                "episode_reward": total_shaped_reward,
+                "agents": agents_state,
+            }
+
         raw_obs, _ = env.reset(seed=episode_seed)
 
         comm_layer: Optional[CommunicationLayer] = None
@@ -968,6 +1146,7 @@ def run_live_training(
                 render_delay,
                 actions=None,
                 communication_events=None,
+                hud_state=build_hud_state(0, None, None, "Training" if train_policy else "Demo"),
             )
 
         for step in range(max_steps):
@@ -1043,6 +1222,12 @@ def run_live_training(
                     render_delay,
                     actions=actions,
                     communication_events=communication_events,
+                    hud_state=build_hud_state(
+                        step + 1,
+                        actions,
+                        communication_events,
+                        "Training" if train_policy else "Demo",
+                    ),
                 )
 
             if all(done_flags.values()):
@@ -1061,6 +1246,9 @@ def run_live_training(
 
         resources = env.get_resources_collected()
         total_resources = int(sum(resources.values()))
+        if train_policy:
+            for agent_id, count in resources.items():
+                cumulative_resources_run[agent_id] += count
 
         return {
             "resources": resources,
