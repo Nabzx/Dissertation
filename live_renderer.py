@@ -8,7 +8,8 @@ from typing import Dict, List, Optional
 
 import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib.colors import BoundaryNorm, ListedColormap
+from matplotlib.lines import Line2D
+from matplotlib.patches import Circle, Rectangle
 
 from env.gridworld_env import GridWorldEnv
 from testing.communication import CommunicationLayer
@@ -21,14 +22,18 @@ class LiveEpisodeRenderer:
     Keeps a single matplotlib window alive while multiple episodes run.
     """
 
-    def __init__(self, initial_grid: np.ndarray, num_episodes: int, max_possible_reward: float):
+    def __init__(
+        self,
+        initial_grid: np.ndarray,
+        num_episodes: int,
+        max_possible_reward: float,
+        max_resources: int,
+    ):
         self.smoothing_window = 50
         self.plot_update_every = 10
         self.plot_downsample = 5
         self.max_possible_reward = max_possible_reward
-
-        cmap = ListedColormap(["white", "green", "blue", "red"])
-        norm = BoundaryNorm([-0.5, 0.5, 1.5, 2.5, 3.5], cmap.N)
+        self.max_resources = max_resources
 
         plt.ion()
         self.fig = plt.figure(figsize=(12, 6))
@@ -36,21 +41,85 @@ class LiveEpisodeRenderer:
         self.ax_grid = self.fig.add_subplot(gs[:, 0])
         self.ax_plot = self.fig.add_subplot(gs[0, 1])
         self.ax_ppo = self.fig.add_subplot(gs[1, 1])
-        self.im = self.ax_grid.imshow(
-            initial_grid,
-            cmap=cmap,
-            norm=norm,
-            origin="upper",
-            interpolation="nearest",
-        )
 
         rows, cols = initial_grid.shape
+        self.grid_rows = rows
+        self.grid_cols = cols
         self.ax_grid.set_title("Environment")
-        self.ax_grid.set_xticks(np.arange(-0.5, cols, 1), minor=True)
-        self.ax_grid.set_yticks(np.arange(-0.5, rows, 1), minor=True)
-        self.ax_grid.grid(which="minor", color="gray", linestyle="-", linewidth=0.5, alpha=0.5)
+        self.ax_grid.set_facecolor("#eef3ec")
+        self.ax_grid.set_xlim(0, cols)
+        self.ax_grid.set_ylim(rows, 0)
+        self.ax_grid.set_aspect("equal")
         self.ax_grid.set_xticks([])
         self.ax_grid.set_yticks([])
+        for spine in self.ax_grid.spines.values():
+            spine.set_visible(False)
+
+        # Draw a soft tile field once so the world feels more like a simulation map.
+        tile_colors = ("#f6f4ee", "#edf2e8")
+        for row in range(rows):
+            for col in range(cols):
+                tile = Rectangle(
+                    (col, row),
+                    1,
+                    1,
+                    facecolor=tile_colors[(row + col) % 2],
+                    edgecolor="#dde5d8",
+                    linewidth=0.3,
+                    zorder=0,
+                )
+                self.ax_grid.add_patch(tile)
+
+        self.resource_patches: List[Circle] = []
+        for _ in range(max_resources):
+            resource_patch = Circle(
+                (-10.0, -10.0),
+                radius=0.18,
+                facecolor="#4fae68",
+                edgecolor="#2f6f41",
+                linewidth=1.0,
+                zorder=3,
+                visible=False,
+            )
+            self.resource_patches.append(resource_patch)
+            self.ax_grid.add_patch(resource_patch)
+
+        self.agent_patches = {
+            2: Circle(
+                (0.5, 0.5),
+                radius=0.28,
+                facecolor="#3b82f6",
+                edgecolor="#1d4ed8",
+                linewidth=1.5,
+                zorder=4,
+                visible=False,
+            ),
+            3: Circle(
+                (0.5, 0.5),
+                radius=0.28,
+                facecolor="#ef4444",
+                edgecolor="#b91c1c",
+                linewidth=1.5,
+                zorder=4,
+                visible=False,
+            ),
+        }
+        for patch in self.agent_patches.values():
+            self.ax_grid.add_patch(patch)
+
+        legend_handles = [
+            Line2D([0], [0], marker="o", color="none", markerfacecolor="#3b82f6", markeredgecolor="#1d4ed8", markersize=9, label="Agent 0"),
+            Line2D([0], [0], marker="o", color="none", markerfacecolor="#ef4444", markeredgecolor="#b91c1c", markersize=9, label="Agent 1"),
+            Line2D([0], [0], marker="o", color="none", markerfacecolor="#4fae68", markeredgecolor="#2f6f41", markersize=7, label="Resource"),
+        ]
+        self.ax_grid.legend(
+            handles=legend_handles,
+            loc="upper center",
+            bbox_to_anchor=(0.5, 1.04),
+            ncol=3,
+            frameon=False,
+            fontsize=9,
+        )
         self.text = self.ax_grid.text(
             0.5,
             -0.08,
@@ -112,6 +181,7 @@ class LiveEpisodeRenderer:
         self.ax_ppo.legend(ppo_handles, [line.get_label() for line in ppo_handles], loc="upper right")
 
         self.fig.subplots_adjust(bottom=0.18)
+        self._update_environment(initial_grid)
 
     def update(
         self,
@@ -121,10 +191,32 @@ class LiveEpisodeRenderer:
         step: int,
         render_delay: float,
     ) -> None:
-        self.im.set_data(grid)
+        self._update_environment(grid)
         self.text.set_text(f"Episode {episode}/{num_episodes} | Step {step}")
         self.fig.canvas.draw_idle()
         plt.pause(render_delay)
+
+    def _update_environment(self, grid: np.ndarray) -> None:
+        resource_idx = 0
+        for row, col in np.argwhere(grid == 1):
+            if resource_idx >= len(self.resource_patches):
+                break
+            patch = self.resource_patches[resource_idx]
+            patch.center = (float(col) + 0.5, float(row) + 0.5)
+            patch.set_visible(True)
+            resource_idx += 1
+
+        for idx in range(resource_idx, len(self.resource_patches)):
+            self.resource_patches[idx].set_visible(False)
+
+        for agent_value, patch in self.agent_patches.items():
+            positions = np.argwhere(grid == agent_value)
+            if len(positions) == 0:
+                patch.set_visible(False)
+                continue
+            row, col = positions[0]
+            patch.center = (float(col) + 0.5, float(row) + 0.5)
+            patch.set_visible(True)
 
     def update_learning_plot(self, total_reward: float, total_resources: float) -> None:
         self.episode_rewards.append(float(total_reward))
@@ -206,6 +298,7 @@ def run_live_training(
         env.grid.copy(),
         num_episodes=num_episodes,
         max_possible_reward=max_possible_reward,
+        max_resources=num_resources,
     )
 
     episode_summaries: List[Dict] = []
