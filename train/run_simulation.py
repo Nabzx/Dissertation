@@ -21,6 +21,7 @@ from env.utils import (
 from testing.ppo_agent import PPOAgent
 from testing.rewards import apply_reward_scheme
 from testing.communication import CommunicationLayer
+from minigames import CaptureFlagGame, GameModeWrapper
 
 
 def run_episode(
@@ -71,6 +72,7 @@ def run_episode(
     total_spawned = env.num_resources
     cumulative_collected: Dict[str, int] = {a: 0 for a in env.agents}
     total_shaped_reward = 0.0
+    game_mode_active = getattr(env, "game_mode", None) is not None
 
     if agent_type == "ppo" and ppo_agent is None:
         raise ValueError("agent_type='ppo' requires a ppo_agent instance.")
@@ -130,18 +132,21 @@ def run_episode(
         # Step environment
         raw_next_obs, rewards, terminations, truncations, infos = env.step(actions)
 
-        # Raw collection counts from env (before shaping)
-        for agent_id, r in rewards.items():
-            if r > 0.0:
-                cumulative_collected[agent_id] += 1
+        if game_mode_active:
+            shaped_rewards = rewards.copy()
+        else:
+            # Raw collection counts from env (before shaping)
+            for agent_id, r in rewards.items():
+                if r > 0.0:
+                    cumulative_collected[agent_id] += 1
 
-        shaped_rewards = apply_reward_scheme(
-            scheme=reward_scheme,
-            raw_rewards=rewards,
-            cumulative_collected=cumulative_collected,
-            total_spawned=total_spawned,
-            alpha=0.5,
-        )
+            shaped_rewards = apply_reward_scheme(
+                scheme=reward_scheme,
+                raw_rewards=rewards,
+                cumulative_collected=cumulative_collected,
+                total_spawned=total_spawned,
+                alpha=0.5,
+            )
         total_shaped_reward += sum(shaped_rewards.values())
 
         # Store PPO transitions (after env.step, using shaped reward + done).
@@ -233,6 +238,9 @@ def run_episode(
     episode_data = {
         "episode_num": episode_num,
         "reward_scheme": reward_scheme,
+        "game_mode": env.game_mode.__class__.__name__ if game_mode_active else "default",
+        "game_metrics": env.get_metrics() if game_mode_active else {},
+        "render_info": env.get_render_info() if game_mode_active else {},
         "total_steps": step_count,
         "total_shaped_reward": total_shaped_reward,
         "resources_collected": resources_collected.copy(),
@@ -287,6 +295,7 @@ def run_batch_simulation(
     agent_type: str = "heuristic",
     reward_scheme: str = "selfish",
     use_communication: bool = False,
+    game_mode: str = "default",
 ) -> List[Dict]:
     """
     Run a batch of simulation episodes.
@@ -311,9 +320,16 @@ def run_batch_simulation(
         max_steps=max_steps,
     )
 
+    game_mode = game_mode.lower()
+    if game_mode == "capture_flag":
+        env = GameModeWrapper(env, CaptureFlagGame(env))
+    elif game_mode not in ("default", "none"):
+        raise ValueError(f"Unknown game_mode '{game_mode}'. Expected 'default' or 'capture_flag'.")
+
     agent_type = agent_type.lower()
     reward_scheme = reward_scheme.lower()
-    run_tag = f"{agent_type}_{reward_scheme}" + ("_comm" if use_communication else "")
+    mode_tag = "" if game_mode in ("default", "none") else f"_{game_mode}"
+    run_tag = f"{agent_type}_{reward_scheme}{mode_tag}" + ("_comm" if use_communication else "")
 
     # Per experiment: agent_type + reward_scheme
     logs_dir = f"logs/{run_tag}"

@@ -332,6 +332,39 @@ class LiveEpisodeRenderer:
             self.ax_grid.add_patch(glow_patch)
             self.ax_grid.add_patch(collect_patch)
 
+        self.flag_patch = Polygon(
+            [(-10.0, -10.0), (-9.6, -9.8), (-10.0, -9.6)],
+            closed=True,
+            facecolor="#facc15",
+            edgecolor="#fde68a",
+            linewidth=1.8,
+            alpha=0.95,
+            zorder=4.2,
+            visible=False,
+        )
+        self.flag_glow_patch = Circle(
+            (-10.0, -10.0),
+            radius=0.46,
+            facecolor="#facc15",
+            edgecolor="none",
+            alpha=0.0,
+            zorder=3.9,
+            visible=False,
+        )
+        self.winner_highlight_patch = Circle(
+            (-10.0, -10.0),
+            radius=0.46,
+            facecolor="none",
+            edgecolor="#fde68a",
+            linewidth=2.6,
+            alpha=0.95,
+            zorder=5,
+            visible=False,
+        )
+        self.ax_grid.add_patch(self.flag_glow_patch)
+        self.ax_grid.add_patch(self.flag_patch)
+        self.ax_grid.add_patch(self.winner_highlight_patch)
+
         self.obstacle_patches: List[Rectangle] = []
         for row in range(rows):
             for col in range(cols):
@@ -387,6 +420,7 @@ class LiveEpisodeRenderer:
         ]
         legend_handles.extend([
             Line2D([0], [0], marker="o", color="none", markerfacecolor=self.arena_palette["resource"], markeredgecolor=self.arena_palette["resource_edge"], markersize=7, label="Resource"),
+            Line2D([0], [0], marker="^", color="none", markerfacecolor="#facc15", markeredgecolor="#fde68a", markersize=9, label="Flag"),
             Rectangle((0, 0), 1, 1, facecolor=self.arena_palette["obstacle"], edgecolor=self.arena_palette["obstacle_edge"], label="Obstacle"),
         ])
         self.ax_grid.legend(
@@ -618,12 +652,18 @@ class LiveEpisodeRenderer:
         step = hud_state.get("step", 0)
         phase = hud_state.get("phase", "Training")
         episode_reward = float(hud_state.get("episode_reward", 0.0))
-        self.hud_phase_text.set_text(str(phase).upper())
+        game_metrics = hud_state.get("game_metrics", {}) or {}
+        game_mode = game_metrics.get("mode") or hud_state.get("game_mode")
+        winner = game_metrics.get("winner") if isinstance(game_metrics, dict) else None
+        phase_label = "CAPTURE THE FLAG" if game_mode == "capture_flag" else str(phase).upper()
+        self.hud_phase_text.set_text(phase_label)
         self.hud_episode_text.set_text(f"Episode: {episode}/{total_episodes}")
         self.hud_step_text.set_text(f"Step: {step}")
-        self.hud_reward_text.set_text(f"Episode reward: {episode_reward:.2f}")
+        winner_text = f" | Winner: {winner}" if winner else ""
+        self.hud_reward_text.set_text(f"Episode reward: {episode_reward:.2f}{winner_text}")
 
         agent_states = hud_state.get("agents", {})
+        distances = game_metrics.get("distances_to_flag", {}) if isinstance(game_metrics, dict) else {}
         for agent_id in self.hud_agent_text.keys():
             info = agent_states.get(agent_id, {})
             resources = int(info.get("resources", 0))
@@ -634,12 +674,15 @@ class LiveEpisodeRenderer:
             agent_type = info.get("agent_type", "unknown")
             status = info.get("status", "Active")
             action = info.get("recent_action", "n/a")
-            self.hud_agent_text[agent_id].set_text(
-                f"Type: {agent_type}\n"
-                f"Resources: {resources} (run {cumulative})\n"
-                f"Position: {position}\n"
-                f"Action: {action}"
-            )
+            lines = [
+                f"Type: {agent_type}",
+                f"Resources: {resources} (run {cumulative})",
+                f"Position: {position}",
+                f"Action: {action}",
+            ]
+            if agent_id in distances:
+                lines.append(f"Flag distance: {distances[agent_id]}")
+            self.hud_agent_text[agent_id].set_text("\n".join(lines))
 
     def update(
         self,
@@ -651,8 +694,14 @@ class LiveEpisodeRenderer:
         actions: Optional[Dict[str, int]] = None,
         communication_events: Optional[List[Dict[str, object]]] = None,
         hud_state: Optional[Dict[str, object]] = None,
+        render_info: Optional[Dict[str, object]] = None,
     ) -> None:
-        self._update_environment(grid, actions=actions, communication_events=communication_events)
+        self._update_environment(
+            grid,
+            actions=actions,
+            communication_events=communication_events,
+            render_info=render_info,
+        )
         self.text.set_text(f"Episode {episode}/{num_episodes} | Step {step}")
         self.update_hud(hud_state)
         self.fig.canvas.draw_idle()
@@ -663,6 +712,7 @@ class LiveEpisodeRenderer:
         grid: np.ndarray,
         actions: Optional[Dict[str, int]] = None,
         communication_events: Optional[List[Dict[str, object]]] = None,
+        render_info: Optional[Dict[str, object]] = None,
     ) -> None:
         self._update_facing(actions)
         self._update_perception(grid)
@@ -718,6 +768,44 @@ class LiveEpisodeRenderer:
             current_positions[agent_value] = (int(row), int(col))
 
         self._update_communication_visuals(current_positions, communication_events)
+        self._update_game_mode_visuals(render_info, current_positions)
+
+    def _update_game_mode_visuals(
+        self,
+        render_info: Optional[Dict[str, object]],
+        current_positions: Dict[int, tuple[int, int]],
+    ) -> None:
+        self.flag_patch.set_visible(False)
+        self.flag_glow_patch.set_visible(False)
+        self.winner_highlight_patch.set_visible(False)
+
+        if not render_info:
+            return
+
+        flag_position = render_info.get("flag_position")
+        if flag_position is not None:
+            row, col = int(flag_position[0]), int(flag_position[1])
+            if 0 <= row < self.arena_mask.shape[0] and 0 <= col < self.arena_mask.shape[1]:
+                if self.arena_mask[row, col]:
+                    cx, cy = float(col) + 0.5, float(row) + 0.5
+                    self.flag_patch.set_xy([
+                        (cx - 0.20, cy + 0.24),
+                        (cx + 0.26, cy + 0.08),
+                        (cx - 0.20, cy - 0.08),
+                    ])
+                    self.flag_patch.set_visible(True)
+                    self.flag_glow_patch.center = (cx, cy)
+                    self.flag_glow_patch.set_alpha(0.22)
+                    self.flag_glow_patch.set_visible(True)
+
+        winner = render_info.get("winner")
+        if winner:
+            winner_value = self._agent_value(str(winner))
+            winner_position = current_positions.get(winner_value)
+            if winner_position is not None:
+                row, col = winner_position
+                self.winner_highlight_patch.center = (float(col) + 0.5, float(row) + 0.5)
+                self.winner_highlight_patch.set_visible(True)
 
     def _update_resource_animation_state(self, grid: np.ndarray) -> None:
         if not self.show_resource_animation:
