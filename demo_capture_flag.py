@@ -46,21 +46,18 @@ def make_capture_flag_env(
 
 
 def build_agent_styles(env: GameModeWrapper) -> Dict[str, Dict[str, str]]:
-    colors = [
-        ("#00d9ff", "#8ff3ff"),
-        ("#ff315a", "#ff9aaa"),
-        ("#39ff88", "#b6ffd2"),
-        ("#facc15", "#fde68a"),
-        ("#a78bfa", "#ddd6fe"),
-        ("#fb923c", "#fed7aa"),
-    ]
+    team_colors = {
+        "Team A": ("#00d9ff", "#8ff3ff"),
+        "Team B": ("#ff315a", "#ff9aaa"),
+    }
     styles = {}
     for idx, agent_id in enumerate(env.agents):
-        color, edge_color = colors[idx % len(colors)]
+        team_name = "Team A" if idx < 2 else "Team B"
+        color, edge_color = team_colors[team_name]
         styles[agent_id] = {
             "color": color,
             "edge_color": edge_color,
-            "label": f"{agent_id} racer",
+            "label": team_name,
         }
     return styles
 
@@ -119,13 +116,14 @@ def build_hud_state(
 
     agents_state = {}
     for agent_id in env.agents:
+        team_name = game_metrics.get("teams", {}).get(agent_id, "Racer")
         agents_state[agent_id] = {
             "resources": 0,
             "cumulative_resources": 0,
             "position": env.agent_positions.get(agent_id, ("-", "-")),
             "facing": "flag",
             "communication": "disabled",
-            "agent_type": "racer",
+            "agent_type": team_name,
             "recent_action": ACTION_LABELS.get(actions.get(agent_id, 0), "n/a") if actions else "n/a",
         }
 
@@ -181,6 +179,7 @@ def run_capture_flag_demo(
     max_steps: int = 150,
     render_delay: float = 0.01,
     mode: str = "live",
+    debug: bool = True,
 ) -> List[Dict[str, object]]:
     mode = mode.lower()
     if mode not in {"live", "playback", "both"}:
@@ -215,6 +214,12 @@ def run_capture_flag_demo(
     for episode_idx in range(num_episodes):
         episode = episode_idx + 1
         env.reset(seed=episode_idx)
+        if debug:
+            print(
+                f"[capture-flag] episode={episode} reset "
+                f"flag={env.get_metrics().get('flag_position')} "
+                f"positions={env.agent_positions}"
+            )
         total_reward = 0.0
         episode_history: List[Dict[str, object]] = []
         actions: Optional[Dict[str, int]] = None
@@ -247,7 +252,8 @@ def run_capture_flag_demo(
 
         winner = None
         final_step = 0
-        for step in range(1, max_steps + 1):
+        for step in range(max_steps):
+            display_step = step + 1
             occupied = set(env.agent_positions.values())
             actions = {
                 agent_id: choose_flag_action(env, agent_id, occupied)
@@ -255,15 +261,22 @@ def run_capture_flag_demo(
             }
             _obs, rewards, terminations, truncations, _infos = env.step(actions)
             total_reward += float(sum(rewards.values()))
-            final_step = step
+            final_step = display_step
             winner = env.get_metrics().get("winner")
+
+            if debug:
+                print(
+                    f"[capture-flag] episode={episode} step={display_step} "
+                    f"flag={env.get_metrics().get('flag_position')} "
+                    f"positions={env.agent_positions} winner={winner}"
+                )
 
             if winner is not None:
                 wins[winner] += 1
-                capture_times.append(step)
+                capture_times.append(display_step)
 
             episode_history.append(
-                build_history_frame(env, episode, step, total_reward, actions, wins, capture_times)
+                build_history_frame(env, episode, display_step, total_reward, actions, wins, capture_times)
             )
 
             if renderer is not None:
@@ -271,14 +284,14 @@ def run_capture_flag_demo(
                     env.grid.copy(),
                     episode,
                     num_episodes,
-                    step,
+                    display_step,
                     render_delay,
                     actions=actions,
                     hud_state=build_hud_state(
                         env,
                         episode,
                         num_episodes,
-                        step,
+                        display_step,
                         total_reward,
                         actions,
                         wins,
@@ -349,6 +362,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-steps", type=int, default=150)
     parser.add_argument("--render-delay", type=float, default=0.01)
     parser.add_argument(
+        "--no-debug",
+        action="store_true",
+        help="Disable temporary per-step debug prints.",
+    )
+    parser.add_argument(
         "--mode",
         choices=("live", "playback", "both"),
         default="live",
@@ -367,4 +385,5 @@ if __name__ == "__main__":
         max_steps=args.max_steps,
         render_delay=args.render_delay,
         mode=args.mode,
+        debug=not args.no_debug,
     )

@@ -656,10 +656,12 @@ class LiveEpisodeRenderer:
         game_mode = game_metrics.get("mode") or hud_state.get("game_mode")
         winner = game_metrics.get("winner") if isinstance(game_metrics, dict) else None
         avg_time = game_metrics.get("average_time_to_flag") if isinstance(game_metrics, dict) else None
+        flag_position = game_metrics.get("flag_position") if isinstance(game_metrics, dict) else None
         phase_label = "CAPTURE THE FLAG" if game_mode == "capture_flag" else str(phase).upper()
         self.hud_phase_text.set_text(phase_label)
         self.hud_episode_text.set_text(f"Episode: {episode}/{total_episodes}")
-        self.hud_step_text.set_text(f"Step: {step}")
+        flag_text = f" | Flag: {flag_position}" if flag_position is not None else ""
+        self.hud_step_text.set_text(f"Step: {step}{flag_text}")
         winner_text = f" | Winner: {winner}" if winner else ""
         avg_text = f" | Avg time: {avg_time:.1f}" if avg_time is not None else ""
         self.hud_reward_text.set_text(f"Episode reward: {episode_reward:.2f}{winner_text}{avg_text}")
