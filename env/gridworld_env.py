@@ -10,6 +10,8 @@ from pettingzoo import ParallelEnv
 from gymnasium.spaces import Discrete, Box
 from typing import Dict, List, Tuple, Optional
 
+from env.arena import compute_octagon_mask, is_inside_arena
+
 
 class GridWorldEnv(ParallelEnv):
     """
@@ -54,6 +56,7 @@ class GridWorldEnv(ParallelEnv):
         self.view_size = view_size
         self.partial_observability = partial_observability
         self.seed = seed
+        self.arena_mask = compute_octagon_mask(grid_size, grid_size)
 
         # Agent IDs
         self.agents = ["agent_0", "agent_1"]
@@ -127,22 +130,17 @@ class GridWorldEnv(ParallelEnv):
         self.obstacle_positions = []
         obstacle_count = 0
         while obstacle_count < self.num_obstacles:
-            pos = (np.random.randint(0, self.grid_size), np.random.randint(0, self.grid_size))
-            if self.grid[pos[0], pos[1]] == 0:
-                self.grid[pos[0], pos[1]] = 4
-                self.obstacle_positions.append(pos)
-                obstacle_count += 1
+            pos = self._sample_empty_arena_cell()
+            self.grid[pos[0], pos[1]] = 4
+            self.obstacle_positions.append(pos)
+            obstacle_count += 1
 
         # Place agents at random positions
         self.agent_positions = {}
         for i, agent in enumerate(self.agents):
-            while True:
-                pos = (np.random.randint(0, self.grid_size), np.random.randint(0, self.grid_size))
-                # Ensure agents don't start on same cell (optional, but cleaner)
-                if pos not in self.agent_positions.values() and self.grid[pos[0], pos[1]] == 0:
-                    self.agent_positions[agent] = pos
-                    self.grid[pos[0], pos[1]] = 2 + i  # 2 for agent_0, 3 for agent_1
-                    break
+            pos = self._sample_empty_arena_cell(exclude=set(self.agent_positions.values()))
+            self.agent_positions[agent] = pos
+            self.grid[pos[0], pos[1]] = 2 + i  # 2 for agent_0, 3 for agent_1
 
         # Place resources randomly
         self.resource_positions = []
@@ -150,12 +148,11 @@ class GridWorldEnv(ParallelEnv):
         resource_count = 0
 
         while resource_count < self.num_resources:
-            pos = (np.random.randint(0, self.grid_size), np.random.randint(0, self.grid_size))
-            if pos not in self.agent_positions.values() and self.grid[pos[0], pos[1]] == 0:
-                self.grid[pos[0], pos[1]] = 1  # Resource
-                self.resource_positions.append(pos)
-                self.initial_resource_positions.append(pos)
-                resource_count += 1
+            pos = self._sample_empty_arena_cell(exclude=set(self.agent_positions.values()))
+            self.grid[pos[0], pos[1]] = 1  # Resource
+            self.resource_positions.append(pos)
+            self.initial_resource_positions.append(pos)
+            resource_count += 1
 
         # Update heatmaps with initial positions
         for agent in self.agents:
@@ -271,9 +268,34 @@ class GridWorldEnv(ParallelEnv):
             col = min(self.grid_size - 1, col + 1)
 
         new_pos = (row, col)
+        if not self.is_inside_arena(new_pos[0], new_pos[1]):
+            return pos
         if new_pos in self.obstacle_positions:
             return pos
         return new_pos
+
+    def is_inside_arena(self, x: int, y: int) -> bool:
+        """
+        Return True if the grid cell is inside the physical octagon arena.
+
+        Args:
+            x: Row index
+            y: Column index
+        """
+        return is_inside_arena(self.arena_mask, x, y)
+
+    def _sample_empty_arena_cell(self, exclude: Optional[set] = None) -> Tuple[int, int]:
+        """Sample an empty cell that is inside the octagon arena."""
+        exclude = exclude or set()
+        valid_cells = np.argwhere((self.grid == 0) & self.arena_mask)
+        if len(valid_cells) == 0:
+            raise RuntimeError("No empty cells available inside the octagon arena.")
+
+        while True:
+            row, col = valid_cells[np.random.randint(0, len(valid_cells))]
+            pos = (int(row), int(col))
+            if pos not in exclude:
+                return pos
 
     def _get_observations(self) -> Dict[str, np.ndarray]:
         """

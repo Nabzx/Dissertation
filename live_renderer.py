@@ -11,8 +11,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.lines import Line2D
 from matplotlib.patches import Circle, Polygon, Rectangle
-from matplotlib.path import Path
 
+from env.arena import build_octagon_vertices, compute_octagon_mask
 from env.gridworld_env import GridWorldEnv
 from testing.communication import CommunicationLayer
 from testing.ppo_agent import PPOAgent
@@ -106,9 +106,8 @@ class LiveEpisodeRenderer:
         rows, cols = initial_grid.shape
         self.grid_rows = rows
         self.grid_cols = cols
-        self.octagon_vertices = self._build_octagon_vertices(rows, cols)
-        self.octagon_path = Path(self.octagon_vertices)
-        self.arena_mask = self._compute_octagon_mask(rows, cols)
+        self.octagon_vertices = build_octagon_vertices(rows, cols)
+        self.arena_mask = compute_octagon_mask(rows, cols)
         self.ax_grid.set_title("Environment")
         self.ax_grid.set_facecolor(self.arena_palette["void"])
         self.ax_grid.set_xlim(0, cols)
@@ -579,30 +578,6 @@ class LiveEpisodeRenderer:
                 f"Status: {status}\n"
                 f"Action: {action}"
             )
-
-    def _build_octagon_vertices(self, rows: int, cols: int) -> np.ndarray:
-        inset = 1.5
-        return np.array(
-            [
-                [inset + 1.2, 0.4],
-                [cols - inset - 1.2, 0.4],
-                [cols - 0.4, inset + 1.2],
-                [cols - 0.4, rows - inset - 1.2],
-                [cols - inset - 1.2, rows - 0.4],
-                [inset + 1.2, rows - 0.4],
-                [0.4, rows - inset - 1.2],
-                [0.4, inset + 1.2],
-            ],
-            dtype=float,
-        )
-
-    def _compute_octagon_mask(self, rows: int, cols: int) -> np.ndarray:
-        mask = np.zeros((rows, cols), dtype=bool)
-        for row in range(rows):
-            for col in range(cols):
-                center = (float(col) + 0.5, float(row) + 0.5)
-                mask[row, col] = bool(self.octagon_path.contains_point(center))
-        return mask
 
     def update(
         self,
