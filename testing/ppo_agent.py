@@ -45,6 +45,7 @@ class PPOConfig:
     mini_batch_size: int = 64
     value_coef: float = 0.5
     entropy_coef: float = 0.01
+    max_grad_norm: float = 0.5
 
 
 if TORCH_AVAILABLE:
@@ -107,6 +108,7 @@ class PPOAgent:
 
         # Simple buffer to collect trajectory data for a batch update.
         self.reset_buffer()
+        self.update_history: List[Dict[str, float]] = []
 
     # ------------------------------------------------------------------
     # Trajectory buffer helpers
@@ -119,6 +121,7 @@ class PPOAgent:
             "rewards": [],
             "dones": [],
             "values": [],
+            "trajectory_ids": [],
         }
 
     def select_action(self, obs: np.ndarray) -> Tuple[int, float, float]:
@@ -156,6 +159,7 @@ class PPOAgent:
         reward: float,
         done: bool,
         value: float,
+        trajectory_id: str = "default",
     ) -> None:
         """Store one time-step transition in the on-policy buffer."""
         self.buffer["obs"].append(obs.astype(np.float32))
@@ -164,6 +168,7 @@ class PPOAgent:
         self.buffer["rewards"].append(np.array(reward, dtype=np.float32))
         self.buffer["dones"].append(np.array(done, dtype=np.float32))
         self.buffer["values"].append(np.array(value, dtype=np.float32))
+        self.buffer["trajectory_ids"].append(trajectory_id)
 
     # ------------------------------------------------------------------
     # PPO update
@@ -172,27 +177,55 @@ class PPOAgent:
         self, last_value: float = 0.0, last_done: bool = True
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
-        Compute discounted returns and simple (non-GAE) advantages.
+        Compute GAE-Lambda advantages and bootstrapped returns.
 
-        This keeps the maths beginner-friendly: we use standard
-        discounted returns and then define advantages as
+        GAE estimates how much better an action was than the critic expected:
 
-            A_t = R_t - V_t
+            delta_t = r_t + gamma * V(s_{t+1}) - V(s_t)
+            A_t = discounted sum of deltas
+
+        Returns are then reconstructed as:
+
+            return_t = A_t + V(s_t)
         """
         rewards = np.array(self.buffer["rewards"], dtype=np.float32)
         values = np.array(self.buffer["values"], dtype=np.float32)
         dones = np.array(self.buffer["dones"], dtype=np.float32)
 
         T = len(rewards)
-        returns = np.zeros(T, dtype=np.float32)
-        next_return = 0.0 if last_done else last_value
+        advantages = np.zeros(T, dtype=np.float32)
+        trajectory_ids = self.buffer.get("trajectory_ids", ["default"] * T)
+        unique_trajectories = list(dict.fromkeys(trajectory_ids))
 
-        for t in reversed(range(T)):
-            next_return = rewards[t] + self.config.gamma * next_return * (1.0 - dones[t])
-            returns[t] = next_return
+        for trajectory_id in unique_trajectories:
+            indices = [idx for idx, tid in enumerate(trajectory_ids) if tid == trajectory_id]
+            last_gae = 0.0
 
-        advantages = returns - values
-        # Normalise advantages for stability
+            for pos in reversed(range(len(indices))):
+                idx = indices[pos]
+                if pos == len(indices) - 1:
+                    next_value = 0.0 if last_done else float(last_value)
+                else:
+                    next_value = values[indices[pos + 1]]
+
+                next_non_terminal = 1.0 - dones[idx]
+                delta = (
+                    rewards[idx]
+                    + self.config.gamma * next_value * next_non_terminal
+                    - values[idx]
+                )
+                last_gae = (
+                    delta
+                    + self.config.gamma
+                    * self.config.lam
+                    * next_non_terminal
+                    * last_gae
+                )
+                advantages[idx] = last_gae
+
+        returns = advantages + values
+
+        # Normalise advantages for PPO stability without changing returns.
         adv_mean = advantages.mean()
         adv_std = advantages.std() + 1e-8
         advantages = (advantages - adv_mean) / adv_std
@@ -214,11 +247,16 @@ class PPOAgent:
             )
 
         if len(self.buffer["rewards"]) == 0:
-            return {
+            metrics = {
                 "policy_loss": 0.0,
                 "value_loss": 0.0,
                 "entropy": 0.0,
+                "mean_reward": 0.0,
+                "approx_kl": 0.0,
+                "clip_fraction": 0.0,
             }
+            self.update_history.append(metrics)
+            return metrics
 
         # Prepare tensors
         obs = torch.from_numpy(np.stack(self.buffer["obs"])).to(self.device_t)
@@ -226,17 +264,20 @@ class PPOAgent:
         old_log_probs = torch.from_numpy(
             np.stack(self.buffer["log_probs"])
         ).to(self.device_t)
+        rewards_np = np.array(self.buffer["rewards"], dtype=np.float32)
 
         returns, advantages = self._compute_returns_and_advantages(last_value, last_done)
         returns_t = torch.from_numpy(returns).to(self.device_t)
         adv_t = torch.from_numpy(advantages).to(self.device_t)
 
         dataset_size = obs.size(0)
-        batch_size = self.config.mini_batch_size
+        batch_size = min(self.config.mini_batch_size, dataset_size)
 
         policy_losses: List[float] = []
         value_losses: List[float] = []
         entropies: List[float] = []
+        approx_kls: List[float] = []
+        clip_fractions: List[float] = []
 
         for _ in range(self.config.train_epochs):
             indices = np.random.permutation(dataset_size)
@@ -263,7 +304,7 @@ class PPOAgent:
                 ) * batch_adv
                 policy_loss = -torch.min(surr1, surr2).mean()
 
-                value_loss = (batch_returns - values).pow(2).mean()
+                value_loss = nn.functional.mse_loss(values, batch_returns)
 
                 loss = (
                     policy_loss
@@ -273,18 +314,37 @@ class PPOAgent:
 
                 self.optimizer.zero_grad()
                 loss.backward()
-                nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=0.5)
+                nn.utils.clip_grad_norm_(
+                    self.model.parameters(),
+                    max_norm=self.config.max_grad_norm,
+                )
                 self.optimizer.step()
+
+                with torch.no_grad():
+                    log_ratio = log_probs - batch_old_log_probs
+                    approx_kl = ((ratio - 1.0) - log_ratio).mean()
+                    clip_fraction = (
+                        (torch.abs(ratio - 1.0) > self.config.clip_ratio)
+                        .float()
+                        .mean()
+                    )
 
                 policy_losses.append(float(policy_loss.item()))
                 value_losses.append(float(value_loss.item()))
                 entropies.append(float(entropy.item()))
+                approx_kls.append(float(approx_kl.item()))
+                clip_fractions.append(float(clip_fraction.item()))
 
         # Clear buffer after update
         self.reset_buffer()
 
-        return {
+        metrics = {
             "policy_loss": float(np.mean(policy_losses)) if policy_losses else 0.0,
             "value_loss": float(np.mean(value_losses)) if value_losses else 0.0,
             "entropy": float(np.mean(entropies)) if entropies else 0.0,
+            "mean_reward": float(np.mean(rewards_np)) if len(rewards_np) else 0.0,
+            "approx_kl": float(np.mean(approx_kls)) if approx_kls else 0.0,
+            "clip_fraction": float(np.mean(clip_fractions)) if clip_fractions else 0.0,
         }
+        self.update_history.append(metrics)
+        return metrics

@@ -156,6 +156,7 @@ def run_episode(
                     reward=float(shaped_rewards[agent_id]),
                     done=done,
                     value=step_values[agent_id],
+                    trajectory_id=agent_id,
                 )
 
         # Update communication messages for next step (PPO only)
@@ -190,9 +191,10 @@ def run_episode(
             break
 
     # PPO update at the end of the episode.
+    ppo_metrics = None
     if agent_type == "ppo":
         try:
-            ppo_agent.update(last_value=0.0, last_done=True)
+            ppo_metrics = ppo_agent.update(last_value=0.0, last_done=True)
         except RuntimeError as exc:
             # PyTorch missing or other training-time issue. Keep simulation running.
             print(f"[ppo] Update skipped: {exc}")
@@ -247,6 +249,7 @@ def run_episode(
         "heatmaps": {agent_id: heatmap.tolist() for agent_id, heatmap in heatmaps.items()},
         # Store trajectories
         "trajectories": {agent_id: positions for agent_id, positions in agent_trajectories.items()},
+        "ppo_metrics": ppo_metrics,
     }
 
     # Save episode JSON

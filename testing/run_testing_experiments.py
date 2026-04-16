@@ -152,6 +152,7 @@ def run_single_episode(
                 reward=shaped_rewards.get(agent_id, 0.0),
                 done=done_flags[agent_id],
                 value=values[agent_id],
+                trajectory_id=agent_id,
             )
 
         obs = next_obs
@@ -322,4 +323,3 @@ def run_testing_experiments() -> Dict:
 
 if __name__ == "__main__":
     run_testing_experiments()
-

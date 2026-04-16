@@ -83,6 +83,7 @@ def train_and_watch(
         resources = episode_data["resources_collected"]
         total_resources = int(sum(resources.values()))
         total_reward = float(episode_data["total_shaped_reward"])
+        ppo_metrics = episode_data.get("ppo_metrics") or {}
 
         episode_summaries.append(episode_data)
         recent_rewards.append(total_reward)
@@ -90,7 +91,10 @@ def train_and_watch(
 
         print(
             f"Episode {episode + 1}: "
-            f"resources collected={resources}, total reward={total_reward:.2f}"
+            f"resources collected={resources}, total reward={total_reward:.2f}, "
+            f"policy_loss={ppo_metrics.get('policy_loss', 0.0):.4f}, "
+            f"value_loss={ppo_metrics.get('value_loss', 0.0):.4f}, "
+            f"entropy={ppo_metrics.get('entropy', 0.0):.4f}"
         )
 
         if should_render:

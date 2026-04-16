@@ -1540,6 +1540,7 @@ def run_live_training(
                         reward=float(shaped_rewards[agent_id]),
                         done=done_flags[agent_id],
                         value=step_values[agent_id],
+                        trajectory_id=agent_id,
                     )
 
             communication_events = None
@@ -1635,7 +1636,11 @@ def run_live_training(
 
         print(
             f"Episode {episode + 1}: "
-            f"resources collected={resources}, total reward={total_shaped_reward:.2f}"
+            f"resources collected={resources}, total reward={total_shaped_reward:.2f}, "
+            f"policy_loss={ppo_metrics.get('policy_loss', 0.0):.4f}, "
+            f"value_loss={ppo_metrics.get('value_loss', 0.0):.4f}, "
+            f"entropy={ppo_metrics.get('entropy', 0.0):.4f}, "
+            f"mean_reward={ppo_metrics.get('mean_reward', 0.0):.4f}"
         )
 
         if (episode + 1) % 100 == 0:
