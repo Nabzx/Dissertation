@@ -1,4 +1,4 @@
-# Your project name here
+# Cooperative Capabilities Of Multi-Agent Systems: An AI 'Hunger Games' Simulation
 
 ## Information about this repository
 
