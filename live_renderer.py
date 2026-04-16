@@ -95,8 +95,9 @@ class LiveEpisodeRenderer:
         self.resource_collect_state: Dict[tuple[int, int], int] = {}
 
         plt.ion()
-        self.fig = plt.figure(figsize=(13.5, 6.4), facecolor=self.arena_palette["panel"])
-        gs = self.fig.add_gridspec(2, 3, width_ratios=[1.15, 0.48, 1.0], wspace=0.28, hspace=0.35)
+        self.fig = plt.figure(figsize=(13.8, 6.6), facecolor="white")
+        self.fig.patch.set_facecolor("white")
+        gs = self.fig.add_gridspec(2, 3, width_ratios=[1.14, 0.52, 1.0], wspace=0.32, hspace=0.38)
         self.ax_grid = self.fig.add_subplot(gs[:, 0])
         self.ax_hud = self.fig.add_subplot(gs[:, 1])
         self.ax_plot = self.fig.add_subplot(gs[0, 2])
@@ -197,7 +198,7 @@ class LiveEpisodeRenderer:
                     1,
                     facecolor=color,
                     edgecolor="none",
-                    alpha=0.14,
+                    alpha=0.055,
                     zorder=2.45,
                     visible=False,
                 )
@@ -213,13 +214,13 @@ class LiveEpisodeRenderer:
             3: self.arena_palette["perception_1"],
         }
         for agent_value, color in ray_colors.items():
-            for _ in range(5):
+            for _ in range(3):
                 line = Line2D(
                     [],
                     [],
                     color=color,
-                    linewidth=1.4,
-                    alpha=0.45,
+                    linewidth=0.85,
+                    alpha=0.26,
                     solid_capstyle="round",
                     zorder=3.2,
                     visible=False,
@@ -279,10 +280,10 @@ class LiveEpisodeRenderer:
         for _ in range(max_resources):
             resource_patch = Circle(
                 (-10.0, -10.0),
-                radius=0.18,
+                radius=0.19,
                 facecolor=self.arena_palette["resource"],
                 edgecolor=self.arena_palette["resource_edge"],
-                linewidth=1.2,
+                linewidth=1.35,
                 zorder=3,
                 visible=False,
             )
@@ -322,9 +323,9 @@ class LiveEpisodeRenderer:
                     (col + 0.12, row + 0.12),
                     0.76,
                     0.76,
-                    facecolor=self.arena_palette["obstacle"],
+                    facecolor="#3f4752",
                     edgecolor=self.arena_palette["obstacle_edge"],
-                    linewidth=1.0,
+                    linewidth=0.7,
                     zorder=2,
                     visible=False,
                 )
@@ -334,19 +335,19 @@ class LiveEpisodeRenderer:
         self.agent_patches = {
             2: Circle(
                 (0.5, 0.5),
-                radius=0.28,
+                radius=0.3,
                 facecolor=self.arena_palette["agent_0"],
                 edgecolor=self.arena_palette["agent_0_edge"],
-                linewidth=1.8,
+                linewidth=2.0,
                 zorder=4,
                 visible=False,
             ),
             3: Circle(
                 (0.5, 0.5),
-                radius=0.28,
+                radius=0.3,
                 facecolor=self.arena_palette["agent_1"],
                 edgecolor=self.arena_palette["agent_1_edge"],
-                linewidth=1.8,
+                linewidth=2.0,
                 zorder=4,
                 visible=False,
             ),
@@ -382,23 +383,11 @@ class LiveEpisodeRenderer:
             Line2D([0], [0], marker="o", color="none", markerfacecolor=self.arena_palette["resource"], markeredgecolor=self.arena_palette["resource_edge"], markersize=7, label="Resource"),
             Rectangle((0, 0), 1, 1, facecolor=self.arena_palette["obstacle"], edgecolor=self.arena_palette["obstacle_edge"], label="Obstacle"),
         ]
-        if show_perception:
-            legend_handles.append(
-                Rectangle((0, 0), 1, 1, facecolor=self.arena_palette["perception_0"], edgecolor=self.arena_palette["agent_0"], alpha=0.25, label="Perception")
-            )
-        if show_communication:
-            legend_handles.append(
-                Line2D([0], [0], color=self.arena_palette["comm_0"], linewidth=1.6, label="Signal")
-            )
-        if show_resource_animation:
-            legend_handles.append(
-                Line2D([0], [0], marker="o", color="none", markerfacecolor=self.arena_palette["resource_flash"], markeredgecolor=self.arena_palette["resource_glow"], markersize=8, label="Spawn Pulse")
-            )
         self.ax_grid.legend(
             handles=legend_handles,
             loc="upper center",
             bbox_to_anchor=(0.5, 1.04),
-            ncol=3,
+            ncol=4,
             frameon=True,
             facecolor="#0b1016",
             edgecolor="#313842",
@@ -434,7 +423,7 @@ class LiveEpisodeRenderer:
         self._style_ui_axis(self.ax_plot, "Learning Progress")
         self.ax_plot.set_xlabel("Episode")
         self.ax_plot.set_ylabel("Smoothed Value")
-        self.ax_plot.grid(True, alpha=0.3)
+        self.ax_plot.grid(True, color="#d1d5db", alpha=0.65, linewidth=0.8)
         self.ax_plot.legend(loc="upper left")
 
         self.policy_line, = self.ax_ppo.plot(
@@ -445,6 +434,7 @@ class LiveEpisodeRenderer:
             label="Policy Loss (PPO)",
         )
         self.ax_entropy = self.ax_ppo.twinx()
+        self.ax_entropy.set_facecolor("white")
         self.entropy_line, = self.ax_entropy.plot(
             [],
             [],
@@ -457,11 +447,12 @@ class LiveEpisodeRenderer:
         self.ax_ppo.set_xlabel("Episode")
         self.ax_ppo.set_ylabel("Policy Loss (PPO)", color="tab:red")
         self.ax_ppo.tick_params(axis="y", labelcolor="tab:red")
-        self.ax_ppo.grid(True, alpha=0.3)
+        self.ax_ppo.grid(True, color="#d1d5db", alpha=0.65, linewidth=0.8)
         self.ax_entropy.set_ylabel("Entropy (Exploration)", color="tab:purple")
         self.ax_entropy.tick_params(axis="y", labelcolor="tab:purple")
         self.ax_ppo.set_ylim(-1.0, 2.0)
         self.ax_entropy.set_ylim(0.0, 2.0)
+        self.ax_entropy.spines["right"].set_color("#9ca3af")
         ppo_handles = [self.policy_line, self.entropy_line]
         self.ax_ppo.legend(ppo_handles, [line.get_label() for line in ppo_handles], loc="upper right")
 
@@ -469,13 +460,13 @@ class LiveEpisodeRenderer:
         self._update_environment(initial_grid)
 
     def _style_ui_axis(self, axis, title: str) -> None:
-        axis.set_facecolor("#11161d")
-        axis.set_title(title, color="#e5e7eb")
-        axis.tick_params(colors="#cbd5e1")
-        axis.xaxis.label.set_color("#cbd5e1")
-        axis.yaxis.label.set_color("#cbd5e1")
+        axis.set_facecolor("white")
+        axis.set_title(title, color="#111827")
+        axis.tick_params(colors="#111827")
+        axis.xaxis.label.set_color("#111827")
+        axis.yaxis.label.set_color("#111827")
         for spine in axis.spines.values():
-            spine.set_color("#374151")
+            spine.set_color("#9ca3af")
 
     def _setup_hud_axis(self) -> None:
         self.ax_hud.set_facecolor("#0b1016")
@@ -491,7 +482,7 @@ class LiveEpisodeRenderer:
             0.97,
             "Arena HUD",
             color="#f3f4f6",
-            fontsize=13,
+            fontsize=12.5,
             fontweight="bold",
             va="top",
         )
@@ -500,15 +491,15 @@ class LiveEpisodeRenderer:
         )
 
         self.hud_episode_text = self.ax_hud.text(
-            0.08, 0.85, "", color="#cbd5e1", fontsize=10.5, va="top"
+            0.09, 0.85, "", color="#cbd5e1", fontsize=10.0, va="top", linespacing=1.45
         )
         self.hud_reward_text = self.ax_hud.text(
-            0.08, 0.79, "", color="#cbd5e1", fontsize=10, va="top"
+            0.09, 0.765, "", color="#cbd5e1", fontsize=9.6, va="top"
         )
 
         card_specs = {
-            "agent_0": {"y": 0.43, "accent": self.arena_palette["agent_0"], "edge": self.arena_palette["agent_0_edge"], "title": "Agent 0"},
-            "agent_1": {"y": 0.07, "accent": self.arena_palette["agent_1"], "edge": self.arena_palette["agent_1_edge"], "title": "Agent 1"},
+            "agent_0": {"y": 0.42, "accent": self.arena_palette["agent_0"], "edge": self.arena_palette["agent_0_edge"], "title": "Agent 0"},
+            "agent_1": {"y": 0.08, "accent": self.arena_palette["agent_1"], "edge": self.arena_palette["agent_1_edge"], "title": "Agent 1"},
         }
         self.hud_agent_text = {}
         for agent_id, spec in card_specs.items():
@@ -516,7 +507,7 @@ class LiveEpisodeRenderer:
                 Rectangle(
                     (0.06, spec["y"]),
                     0.88,
-                    0.28,
+                    0.3,
                     facecolor="#111827",
                     edgecolor="#1f2937",
                     linewidth=1.1,
@@ -527,7 +518,7 @@ class LiveEpisodeRenderer:
                 Rectangle(
                     (0.06, spec["y"]),
                     0.018,
-                    0.28,
+                    0.3,
                     facecolor=spec["accent"],
                     edgecolor="none",
                     zorder=0.6,
@@ -535,21 +526,21 @@ class LiveEpisodeRenderer:
             )
             self.ax_hud.text(
                 0.1,
-                spec["y"] + 0.245,
+                spec["y"] + 0.265,
                 spec["title"],
                 color=spec["accent"],
-                fontsize=11,
+                fontsize=10.8,
                 fontweight="bold",
                 va="top",
             )
             self.hud_agent_text[agent_id] = self.ax_hud.text(
                 0.1,
-                spec["y"] + 0.205,
+                spec["y"] + 0.22,
                 "",
                 color="#e5e7eb",
-                fontsize=9.3,
+                fontsize=8.8,
                 va="top",
-                linespacing=1.55,
+                linespacing=1.5,
             )
 
     def update_hud(self, hud_state: Optional[Dict[str, object]]) -> None:
@@ -846,10 +837,10 @@ class LiveEpisodeRenderer:
     ) -> List[Dict[str, List]]:
         dr, dc = facing
         if (dr, dc) in [(0, 1), (0, -1)]:
-            fan_offsets = [-0.6, -0.3, 0.0, 0.3, 0.6]
+            fan_offsets = [-0.45, 0.0, 0.45]
             lateral = (1, 0)
         else:
-            fan_offsets = [-0.6, -0.3, 0.0, 0.3, 0.6]
+            fan_offsets = [-0.45, 0.0, 0.45]
             lateral = (0, 1)
 
         origin_x = float(col) + 0.5
