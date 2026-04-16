@@ -142,16 +142,27 @@ class CommunicationLayer:
         After the environment step, compute *new* messages for each agent
         and deliver them to the other agent. These messages will be used
         for the next decision step.
+
+        Returns:
+            Messages whose payload changed compared with what receivers already
+            had. The environment still delivers all messages internally, but
+            renderers can use this return value to show only real communication
+            events instead of constant fake signals.
         """
         new_messages: Dict[str, np.ndarray] = {}
         for agent in self.env.agents:
             new_messages[agent] = self._compute_message_for_agent(agent)
+
+        changed_messages: Dict[str, np.ndarray] = {}
 
         # Deliver each agent's message to all *other* agents.
         for agent in self.env.agents:
             for other in self.env.agents:
                 if other == agent:
                     continue
+                previous_msg = self.state.last_messages.get(other)
+                if previous_msg is None or not np.array_equal(previous_msg, new_messages[agent]):
+                    changed_messages[agent] = new_messages[agent].copy()
                 self.state.last_messages[other] = new_messages[agent].copy()
 
-        return new_messages
+        return changed_messages

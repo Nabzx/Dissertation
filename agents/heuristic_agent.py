@@ -27,14 +27,17 @@ class HeuristicAgent:
             agent_id: Unique identifier for this agent (e.g., "agent_0")
         """
         self.agent_id = agent_id
-        self.agent_value = 2 if agent_id == "agent_0" else 3
+        try:
+            self.agent_value = 2 + int(agent_id.split("_")[-1])
+        except (ValueError, IndexError):
+            self.agent_value = 2
 
     def get_action(self, observation: np.ndarray) -> int:
         """
         Select an action based on the current observation.
 
         Args:
-            observation: 15x15 grid observation (0=empty, 1=resource, 2=agent_0, 3=agent_1, 4=obstacle)
+            observation: grid observation (0=empty, 1=resource, 2+=agents, final high value=obstacle)
 
         Returns:
             Action value (0=stay, 1=up, 2=down, 3=left, 4=right)

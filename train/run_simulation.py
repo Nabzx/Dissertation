@@ -21,6 +21,7 @@ from env.utils import (
 from testing.ppo_agent import PPOAgent
 from testing.rewards import apply_reward_scheme
 from testing.communication import CommunicationLayer
+from minigames import CaptureFlagGame, GameModeWrapper
 
 
 def run_episode(
@@ -37,6 +38,7 @@ def run_episode(
     reward_scheme: str = "selfish",
     use_communication: bool = False,
     render: bool = False,
+    train_policy: bool = True,
 ) -> Dict:
     """
     Run a single episode of the simulation.
@@ -55,6 +57,7 @@ def run_episode(
         reward_scheme: "selfish", "mixed", or "fully_cooperative" (shaping for PPO; logged for all)
         use_communication: If True, augment PPO observations with a bandwidth-limited message vector
         render: If True, capture full-grid states across the episode for animation
+        train_policy: If False, run PPO inference only and skip buffer/update logic
 
     Returns:
         Dict containing episode data
@@ -69,6 +72,7 @@ def run_episode(
     total_spawned = env.num_resources
     cumulative_collected: Dict[str, int] = {a: 0 for a in env.agents}
     total_shaped_reward = 0.0
+    game_mode_active = getattr(env, "game_mode", None) is not None
 
     if agent_type == "ppo" and ppo_agent is None:
         raise ValueError("agent_type='ppo' requires a ppo_agent instance.")
@@ -85,16 +89,13 @@ def run_episode(
     if agent_type == "heuristic":
         for agent in agents.values():
             agent.reset()
-    else:
+    elif train_policy:
         # Keep PPO updates episode-scoped for simplicity.
         ppo_agent.reset_buffer()
 
     # Store episode trajectory and agent positions
     trajectory = []
-    agent_trajectories = {
-        "agent_0": [],
-        "agent_1": [],
-    }
+    agent_trajectories = {agent: [] for agent in env.agents}
     grid_sequence: List[np.ndarray] = []
     step_count = 0
 
@@ -131,22 +132,25 @@ def run_episode(
         # Step environment
         raw_next_obs, rewards, terminations, truncations, infos = env.step(actions)
 
-        # Raw collection counts from env (before shaping)
-        for agent_id, r in rewards.items():
-            if r > 0.0:
-                cumulative_collected[agent_id] += 1
+        if game_mode_active:
+            shaped_rewards = rewards.copy()
+        else:
+            # Raw collection counts from env (before shaping)
+            for agent_id, r in rewards.items():
+                if r > 0.0:
+                    cumulative_collected[agent_id] += 1
 
-        shaped_rewards = apply_reward_scheme(
-            scheme=reward_scheme,
-            raw_rewards=rewards,
-            cumulative_collected=cumulative_collected,
-            total_spawned=total_spawned,
-            alpha=0.5,
-        )
+            shaped_rewards = apply_reward_scheme(
+                scheme=reward_scheme,
+                raw_rewards=rewards,
+                cumulative_collected=cumulative_collected,
+                total_spawned=total_spawned,
+                alpha=0.5,
+            )
         total_shaped_reward += sum(shaped_rewards.values())
 
         # Store PPO transitions (after env.step, using shaped reward + done).
-        if agent_type == "ppo":
+        if agent_type == "ppo" and train_policy:
             for agent_id in env.agents:
                 done = bool(terminations[agent_id] or truncations[agent_id])
                 ppo_agent.store_transition(
@@ -156,6 +160,7 @@ def run_episode(
                     reward=float(shaped_rewards[agent_id]),
                     done=done,
                     value=step_values[agent_id],
+                    trajectory_id=agent_id,
                 )
 
         # Update communication messages for next step (PPO only)
@@ -190,9 +195,10 @@ def run_episode(
             break
 
     # PPO update at the end of the episode.
-    if agent_type == "ppo":
+    ppo_metrics = None
+    if agent_type == "ppo" and train_policy:
         try:
-            ppo_agent.update(last_value=0.0, last_done=True)
+            ppo_metrics = ppo_agent.update(last_value=0.0, last_done=True)
         except RuntimeError as exc:
             # PyTorch missing or other training-time issue. Keep simulation running.
             print(f"[ppo] Update skipped: {exc}")
@@ -232,14 +238,28 @@ def run_episode(
     episode_data = {
         "episode_num": episode_num,
         "reward_scheme": reward_scheme,
+        "game_mode": env.game_mode.__class__.__name__ if game_mode_active else "default",
+        "game_metrics": env.get_metrics() if game_mode_active else {},
+        "render_info": env.get_render_info() if game_mode_active else {},
         "total_steps": step_count,
         "total_shaped_reward": total_shaped_reward,
         "resources_collected": resources_collected.copy(),
         "total_resources_spawned": len(initial_resources),
         "initial_resource_positions": initial_resources,
-        "agent_0_survived": resources_collected["agent_0"] >= 1,
-        "agent_1_survived": resources_collected["agent_1"] >= 1,
-        "both_survived": resources_collected["agent_0"] >= 1 and resources_collected["agent_1"] >= 1,
+        "agent_survival": {
+            agent: resources_collected.get(agent, 0) >= 1
+            for agent in env.agents
+        },
+        "all_survived": all(resources_collected.get(agent, 0) >= 1 for agent in env.agents),
+        "any_survived": any(resources_collected.get(agent, 0) >= 1 for agent in env.agents),
+        # Backward-compatible aliases for older analysis scripts.
+        "agent_0_survived": resources_collected.get("agent_0", 0) >= 1,
+        "agent_1_survived": resources_collected.get("agent_1", 0) >= 1,
+        "both_survived": all(
+            resources_collected.get(agent, 0) >= 1
+            for agent in ["agent_0", "agent_1"]
+            if agent in resources_collected
+        ),
         "screenshot_path": screenshot_path,
         "heatmap_paths": heatmap_paths,
         "resource_dist_path": resource_dist_path,
@@ -247,6 +267,7 @@ def run_episode(
         "heatmaps": {agent_id: heatmap.tolist() for agent_id, heatmap in heatmaps.items()},
         # Store trajectories
         "trajectories": {agent_id: positions for agent_id, positions in agent_trajectories.items()},
+        "ppo_metrics": ppo_metrics,
     }
 
     # Save episode JSON
@@ -264,14 +285,17 @@ def run_episode(
 
 def run_batch_simulation(
     num_episodes: int = 20,
-    grid_size: int = 15,
-    num_resources: int = 10,
-    max_steps: int = 200,
+    grid_size: int = 25,
+    num_agents: int = 4,
+    num_resources: int = 25,
+    num_obstacles: int = 45,
+    max_steps: int = 250,
     save_screenshots: bool = True,
     save_heatmaps: bool = True,
     agent_type: str = "heuristic",
     reward_scheme: str = "selfish",
     use_communication: bool = False,
+    game_mode: str = "default",
 ) -> List[Dict]:
     """
     Run a batch of simulation episodes.
@@ -288,11 +312,24 @@ def run_batch_simulation(
         List of episode data dictionaries
     """
     # Create environment
-    env = GridWorldEnv(grid_size=grid_size, num_resources=num_resources, max_steps=max_steps)
+    env = GridWorldEnv(
+        grid_size=grid_size,
+        num_agents=num_agents,
+        num_resources=num_resources,
+        num_obstacles=num_obstacles,
+        max_steps=max_steps,
+    )
+
+    game_mode = game_mode.lower()
+    if game_mode == "capture_flag":
+        env = GameModeWrapper(env, CaptureFlagGame(env))
+    elif game_mode not in ("default", "none"):
+        raise ValueError(f"Unknown game_mode '{game_mode}'. Expected 'default' or 'capture_flag'.")
 
     agent_type = agent_type.lower()
     reward_scheme = reward_scheme.lower()
-    run_tag = f"{agent_type}_{reward_scheme}" + ("_comm" if use_communication else "")
+    mode_tag = "" if game_mode in ("default", "none") else f"_{game_mode}"
+    run_tag = f"{agent_type}_{reward_scheme}{mode_tag}" + ("_comm" if use_communication else "")
 
     # Per experiment: agent_type + reward_scheme
     logs_dir = f"logs/{run_tag}"
@@ -308,8 +345,7 @@ def run_batch_simulation(
     ppo_agent: Optional[PPOAgent] = None
     if agent_type == "heuristic":
         agents: Optional[Dict[str, HeuristicAgent]] = {
-            "agent_0": HeuristicAgent("agent_0"),
-            "agent_1": HeuristicAgent("agent_1"),
+            agent: HeuristicAgent(agent) for agent in env.agents
         }
     elif agent_type == "ppo":
         agents = None
@@ -347,11 +383,8 @@ def run_batch_simulation(
 
         # Print summary
         resources = episode_data["resources_collected"]
-        print(
-            f"Agent 0: {resources['agent_0']} resources, "
-            f"Agent 1: {resources['agent_1']} resources, "
-            f"Steps: {episode_data['total_steps']}"
-        )
+        resource_text = ", ".join(f"{agent}: {count}" for agent, count in resources.items())
+        print(f"{resource_text}, Steps: {episode_data['total_steps']}")
 
     print(f"\nCompleted {num_episodes} episodes!")
     print(f"Results saved to {logs_dir}/ and {results_dir}/")

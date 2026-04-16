@@ -7,3 +7,5 @@ logs/
 results/
 testing/logs/
 testing/results/
+results/
+checkpoints/

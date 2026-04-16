@@ -34,8 +34,12 @@ def animate_episode(
     if not grid_sequence:
         raise ValueError("grid_sequence must contain at least one grid state.")
 
-    cmap = ListedColormap(["white", "green", "blue", "red"])
-    norm = BoundaryNorm([-0.5, 0.5, 1.5, 2.5, 3.5], cmap.N)
+    max_value = int(max(np.max(frame) for frame in grid_sequence))
+    base_colors = ["white", "green", "blue", "red", "orange", "purple", "dimgray"]
+    if max_value + 1 > len(base_colors):
+        base_colors.extend(["cyan", "magenta", "yellow", "brown"][: max_value + 1 - len(base_colors)])
+    cmap = ListedColormap(base_colors[: max_value + 1])
+    norm = BoundaryNorm(np.arange(-0.5, max_value + 1.5, 1.0), cmap.N)
 
     fig, ax = plt.subplots(figsize=(8, 8))
     image = ax.imshow(grid_sequence[0], cmap=cmap, norm=norm, origin="upper", interpolation="nearest")

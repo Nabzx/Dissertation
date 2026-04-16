@@ -23,7 +23,7 @@ def run_animation_test(save_path: str | None = None):
     reward_scheme = "selfish"
     communication = False
 
-    env = GridWorldEnv(grid_size=15, num_resources=10, max_steps=100)
+    env = GridWorldEnv(grid_size=25, num_resources=25, num_obstacles=45, max_steps=250)
 
     obs_shape = env.observation_spaces[env.agents[0]].shape
     obs_dim = int(np.prod(obs_shape))
