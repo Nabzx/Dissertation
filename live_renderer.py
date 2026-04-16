@@ -655,15 +655,18 @@ class LiveEpisodeRenderer:
         game_metrics = hud_state.get("game_metrics", {}) or {}
         game_mode = game_metrics.get("mode") or hud_state.get("game_mode")
         winner = game_metrics.get("winner") if isinstance(game_metrics, dict) else None
+        avg_time = game_metrics.get("average_time_to_flag") if isinstance(game_metrics, dict) else None
         phase_label = "CAPTURE THE FLAG" if game_mode == "capture_flag" else str(phase).upper()
         self.hud_phase_text.set_text(phase_label)
         self.hud_episode_text.set_text(f"Episode: {episode}/{total_episodes}")
         self.hud_step_text.set_text(f"Step: {step}")
         winner_text = f" | Winner: {winner}" if winner else ""
-        self.hud_reward_text.set_text(f"Episode reward: {episode_reward:.2f}{winner_text}")
+        avg_text = f" | Avg time: {avg_time:.1f}" if avg_time is not None else ""
+        self.hud_reward_text.set_text(f"Episode reward: {episode_reward:.2f}{winner_text}{avg_text}")
 
         agent_states = hud_state.get("agents", {})
         distances = game_metrics.get("distances_to_flag", {}) if isinstance(game_metrics, dict) else {}
+        wins = game_metrics.get("wins", {}) if isinstance(game_metrics, dict) else {}
         for agent_id in self.hud_agent_text.keys():
             info = agent_states.get(agent_id, {})
             resources = int(info.get("resources", 0))
@@ -682,6 +685,8 @@ class LiveEpisodeRenderer:
             ]
             if agent_id in distances:
                 lines.append(f"Flag distance: {distances[agent_id]}")
+            if agent_id in wins:
+                lines.append(f"Wins: {wins[agent_id]}")
             self.hud_agent_text[agent_id].set_text("\n".join(lines))
 
     def update(
@@ -1351,6 +1356,7 @@ class PlaybackController:
             actions=None,
             communication_events=None,
             hud_state=hud_state,
+            render_info=frame.get("render_info"),
         )
 
     def _current_frame(self) -> Dict[str, object]:
@@ -1372,6 +1378,7 @@ class PlaybackController:
         grid = self._frame_grid(frame)
         summary = self.summaries[self.current_episode] if self.current_episode < len(self.summaries) else {}
         resources_collected = summary.get("resources_collected", {})
+        game_metrics = frame.get("game_metrics", summary.get("game_metrics", {}))
         recorded_positions = frame.get("agent_positions", {})
         agents_state = {}
         for agent_value in self.renderer.agent_values:
@@ -1396,6 +1403,7 @@ class PlaybackController:
             "total_episodes": len(self.history),
             "step": int(frame.get("step", self.current_step)),
             "episode_reward": float(summary.get("total_reward", 0.0)),
+            "game_metrics": game_metrics,
             "agents": agents_state,
         }
 
