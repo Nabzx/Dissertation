@@ -31,10 +31,11 @@ def train_headless(
     smoothing_window: int = 50,
     reward_scheme: str = "selfish",
     use_communication: bool = False,
-    grid_size: int = 15,
+    grid_size: int = 25,
     num_agents: int = 4,
-    num_resources: int = 10,
-    max_steps: int = 100,
+    num_resources: int = 25,
+    num_obstacles: int = 45,
+    max_steps: int = 250,
     device: str = "cpu",
 ) -> List[Dict]:
     """
@@ -53,6 +54,7 @@ def train_headless(
         grid_size=grid_size,
         num_agents=num_agents,
         num_resources=num_resources,
+        num_obstacles=num_obstacles,
         max_steps=max_steps,
     )
     obs_dim = int(np.prod(env.observation_spaces[env.agents[0]].shape))
@@ -239,10 +241,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--smoothing-window", type=int, default=50)
     parser.add_argument("--reward-scheme", default="selfish")
     parser.add_argument("--communication", action="store_true")
-    parser.add_argument("--grid-size", type=int, default=15)
+    parser.add_argument("--grid-size", type=int, default=25)
     parser.add_argument("--num-agents", type=int, default=4)
-    parser.add_argument("--num-resources", type=int, default=10)
-    parser.add_argument("--max-steps", type=int, default=100)
+    parser.add_argument("--num-resources", type=int, default=25)
+    parser.add_argument("--num-obstacles", type=int, default=45)
+    parser.add_argument("--max-steps", type=int, default=250)
     parser.add_argument("--device", default="cpu")
     return parser.parse_args()
 
@@ -261,6 +264,7 @@ if __name__ == "__main__":
         grid_size=args.grid_size,
         num_agents=args.num_agents,
         num_resources=args.num_resources,
+        num_obstacles=args.num_obstacles,
         max_steps=args.max_steps,
         device=args.device,
     )

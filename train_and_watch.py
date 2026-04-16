@@ -23,9 +23,10 @@ def train_and_watch(
     render_every: int = 100,
     reward_scheme: str = "selfish",
     use_communication: bool = False,
-    grid_size: int = 15,
-    num_resources: int = 10,
-    max_steps: int = 100,
+    grid_size: int = 25,
+    num_resources: int = 25,
+    num_obstacles: int = 45,
+    max_steps: int = 250,
     render_interval: int = 50,
     save_gif_dir: Optional[str] = None,
 ) -> List[Dict]:
@@ -47,7 +48,12 @@ def train_and_watch(
     Returns:
         List of episode summaries
     """
-    env = GridWorldEnv(grid_size=grid_size, num_resources=num_resources, max_steps=max_steps)
+    env = GridWorldEnv(
+        grid_size=grid_size,
+        num_resources=num_resources,
+        num_obstacles=num_obstacles,
+        max_steps=max_steps,
+    )
 
     obs_shape = env.observation_spaces[env.agents[0]].shape
     obs_dim = int(np.prod(obs_shape))

@@ -277,10 +277,11 @@ def run_episode(
 
 def run_batch_simulation(
     num_episodes: int = 20,
-    grid_size: int = 15,
+    grid_size: int = 25,
     num_agents: int = 4,
-    num_resources: int = 10,
-    max_steps: int = 200,
+    num_resources: int = 25,
+    num_obstacles: int = 45,
+    max_steps: int = 250,
     save_screenshots: bool = True,
     save_heatmaps: bool = True,
     agent_type: str = "heuristic",
@@ -306,6 +307,7 @@ def run_batch_simulation(
         grid_size=grid_size,
         num_agents=num_agents,
         num_resources=num_resources,
+        num_obstacles=num_obstacles,
         max_steps=max_steps,
     )
 

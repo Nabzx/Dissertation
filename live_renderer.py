@@ -1344,10 +1344,11 @@ def run_live_training(
     num_episodes: int = 1000,
     reward_scheme: str = "selfish",
     use_communication: bool = False,
-    grid_size: int = 15,
+    grid_size: int = 25,
     num_agents: int = 4,
-    num_resources: int = 10,
-    max_steps: int = 100,
+    num_resources: int = 25,
+    num_obstacles: int = 45,
+    max_steps: int = 250,
     render_delay: float = 0.001,
     render_every: int = 50,
     fast_mode: bool = False,
@@ -1367,6 +1368,7 @@ def run_live_training(
         grid_size=grid_size,
         num_agents=num_agents,
         num_resources=num_resources,
+        num_obstacles=num_obstacles,
         max_steps=max_steps,
     )
     max_possible_reward = float(num_resources * len(env.agents))

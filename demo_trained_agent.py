@@ -25,10 +25,11 @@ def demo_trained_agent(
     num_episodes: int = 5,
     reward_scheme: str = "selfish",
     use_communication: bool = False,
-    grid_size: int = 15,
+    grid_size: int = 25,
     num_agents: int = 4,
-    num_resources: int = 10,
-    max_steps: int = 100,
+    num_resources: int = 25,
+    num_obstacles: int = 45,
+    max_steps: int = 250,
     interval: int = 50,
     save_gif_dir: Optional[str] = None,
     device: str = "cpu",
@@ -43,6 +44,7 @@ def demo_trained_agent(
         grid_size=grid_size,
         num_agents=num_agents,
         num_resources=num_resources,
+        num_obstacles=num_obstacles,
         max_steps=max_steps,
     )
     ppo_agent = PPOAgent.load(checkpoint_path, device=device)
@@ -102,10 +104,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--num-episodes", type=int, default=5)
     parser.add_argument("--reward-scheme", default="selfish")
     parser.add_argument("--communication", action="store_true")
-    parser.add_argument("--grid-size", type=int, default=15)
+    parser.add_argument("--grid-size", type=int, default=25)
     parser.add_argument("--num-agents", type=int, default=4)
-    parser.add_argument("--num-resources", type=int, default=10)
-    parser.add_argument("--max-steps", type=int, default=100)
+    parser.add_argument("--num-resources", type=int, default=25)
+    parser.add_argument("--num-obstacles", type=int, default=45)
+    parser.add_argument("--max-steps", type=int, default=250)
     parser.add_argument("--interval", type=int, default=50)
     parser.add_argument("--save-gif-dir", default=None)
     parser.add_argument("--device", default="cpu")
@@ -122,6 +125,7 @@ if __name__ == "__main__":
         grid_size=args.grid_size,
         num_agents=args.num_agents,
         num_resources=args.num_resources,
+        num_obstacles=args.num_obstacles,
         max_steps=args.max_steps,
         interval=args.interval,
         save_gif_dir=args.save_gif_dir,

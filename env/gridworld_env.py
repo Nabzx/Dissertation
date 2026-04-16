@@ -28,12 +28,12 @@ class GridWorldEnv(ParallelEnv):
 
     def __init__(
         self,
-        grid_size: int = 15,
-        num_resources: int = 10,
-        num_obstacles: int = 12,
+        grid_size: int = 25,
+        num_resources: int = 25,
+        num_obstacles: int = 45,
         resource_respawn_prob: float = 0.02,
         max_resources: Optional[int] = None,
-        max_steps: int = 200,
+        max_steps: int = 250,
         view_size: int = 5,
         partial_observability: bool = True,
         num_agents: int = 4,
@@ -43,12 +43,12 @@ class GridWorldEnv(ParallelEnv):
         Initialise the grid world environment.
 
         Args:
-            grid_size: Size of the square grid (default: 15)
-            num_resources: Number of resources to spawn (default: 10)
-            num_obstacles: Number of obstacle cells to place (default: 12)
+            grid_size: Size of the square grid (default: 25)
+            num_resources: Number of resources to spawn (default: 25)
+            num_obstacles: Number of obstacle cells to place (default: 45)
             resource_respawn_prob: Per-step probability of spawning one resource
             max_resources: Maximum active resources allowed at once
-            max_steps: Maximum steps per episode (default: 200)
+            max_steps: Maximum steps per episode (default: 250)
             view_size: Side length of the local observation window (default: 5)
             partial_observability: If True, return a local view per agent; if False,
                 return the full grid (original behaviour).
