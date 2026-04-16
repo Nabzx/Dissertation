@@ -9,6 +9,7 @@ saves checkpoints that can later be loaded by demo_trained_agent.py.
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import os
 from typing import Dict, List
@@ -25,7 +26,9 @@ def train_headless(
     num_episodes: int = 5000,
     checkpoint_dir: str = "checkpoints",
     metrics_path: str = "results/headless_training_metrics.json",
+    csv_path: str = "results/headless_training_metrics.csv",
     checkpoint_every: int = 500,
+    smoothing_window: int = 50,
     reward_scheme: str = "selfish",
     use_communication: bool = False,
     grid_size: int = 15,
@@ -40,9 +43,10 @@ def train_headless(
         raise RuntimeError("Headless PPO training requires PyTorch.")
 
     os.makedirs(checkpoint_dir, exist_ok=True)
-    metrics_dir = os.path.dirname(metrics_path)
-    if metrics_dir:
-        os.makedirs(metrics_dir, exist_ok=True)
+    for output_path in [metrics_path, csv_path]:
+        output_dir = os.path.dirname(output_path)
+        if output_dir:
+            os.makedirs(output_dir, exist_ok=True)
 
     env = GridWorldEnv(grid_size=grid_size, num_resources=num_resources, max_steps=max_steps)
     obs_dim = int(np.prod(env.observation_spaces[env.agents[0]].shape))
@@ -52,6 +56,7 @@ def train_headless(
 
     ppo_agent = PPOAgent(obs_dim=obs_dim, n_actions=action_dim, device=device)
     metrics: List[Dict] = []
+    _initialise_csv(csv_path)
 
     for episode in range(num_episodes):
         episode_data = run_episode(
@@ -73,6 +78,21 @@ def train_headless(
         total_resources = int(sum(resources.values()))
         total_reward = float(episode_data["total_shaped_reward"])
         ppo_metrics = episode_data.get("ppo_metrics") or {}
+        reward_ma = _moving_average_value(metrics, "total_reward", total_reward, smoothing_window)
+        resources_ma = _moving_average_value(metrics, "total_resources", total_resources, smoothing_window)
+        entropy_ma = _moving_average_metric(metrics, "entropy", ppo_metrics.get("entropy", 0.0), smoothing_window)
+        policy_loss_ma = _moving_average_metric(
+            metrics,
+            "policy_loss",
+            ppo_metrics.get("policy_loss", 0.0),
+            smoothing_window,
+        )
+        value_loss_ma = _moving_average_metric(
+            metrics,
+            "value_loss",
+            ppo_metrics.get("value_loss", 0.0),
+            smoothing_window,
+        )
 
         row = {
             "episode": episode + 1,
@@ -80,9 +100,15 @@ def train_headless(
             "total_resources": total_resources,
             "resources_collected": resources,
             "steps": int(episode_data["total_steps"]),
+            "reward_ma": reward_ma,
+            "resources_ma": resources_ma,
+            "entropy_ma": entropy_ma,
+            "policy_loss_ma": policy_loss_ma,
+            "value_loss_ma": value_loss_ma,
             "ppo_metrics": ppo_metrics,
         }
         metrics.append(row)
+        _append_csv_row(csv_path, row)
 
         if (episode + 1) % 10 == 0:
             recent = metrics[-10:]
@@ -110,6 +136,7 @@ def train_headless(
     _write_metrics(metrics_path, metrics)
     print(f"Saved final checkpoint: {final_path}")
     print(f"Saved metrics: {metrics_path}")
+    print(f"Saved per-episode CSV: {csv_path}")
     return metrics
 
 
@@ -118,12 +145,94 @@ def _write_metrics(path: str, metrics: List[Dict]) -> None:
         json.dump(metrics, f, indent=2)
 
 
+def _moving_average_value(
+    previous_rows: List[Dict],
+    key: str,
+    current_value: float,
+    window: int,
+) -> float:
+    values = [float(row[key]) for row in previous_rows[-max(0, window - 1) :]]
+    values.append(float(current_value))
+    return float(np.mean(values)) if values else 0.0
+
+
+def _moving_average_metric(
+    previous_rows: List[Dict],
+    metric_key: str,
+    current_value: float,
+    window: int,
+) -> float:
+    values = [
+        float(row.get("ppo_metrics", {}).get(metric_key, 0.0))
+        for row in previous_rows[-max(0, window - 1) :]
+    ]
+    values.append(float(current_value))
+    return float(np.mean(values)) if values else 0.0
+
+
+def _csv_fields() -> List[str]:
+    return [
+        "episode",
+        "total_reward",
+        "reward_ma",
+        "total_resources",
+        "resources_ma",
+        "agent_0_resources",
+        "agent_1_resources",
+        "steps",
+        "policy_loss",
+        "policy_loss_ma",
+        "value_loss",
+        "value_loss_ma",
+        "entropy",
+        "entropy_ma",
+        "mean_reward",
+        "approx_kl",
+        "clip_fraction",
+    ]
+
+
+def _initialise_csv(path: str) -> None:
+    with open(path, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=_csv_fields())
+        writer.writeheader()
+
+
+def _append_csv_row(path: str, row: Dict) -> None:
+    ppo_metrics = row.get("ppo_metrics") or {}
+    resources = row.get("resources_collected") or {}
+    flat_row = {
+        "episode": row["episode"],
+        "total_reward": row["total_reward"],
+        "reward_ma": row["reward_ma"],
+        "total_resources": row["total_resources"],
+        "resources_ma": row["resources_ma"],
+        "agent_0_resources": resources.get("agent_0", 0),
+        "agent_1_resources": resources.get("agent_1", 0),
+        "steps": row["steps"],
+        "policy_loss": ppo_metrics.get("policy_loss", 0.0),
+        "policy_loss_ma": row["policy_loss_ma"],
+        "value_loss": ppo_metrics.get("value_loss", 0.0),
+        "value_loss_ma": row["value_loss_ma"],
+        "entropy": ppo_metrics.get("entropy", 0.0),
+        "entropy_ma": row["entropy_ma"],
+        "mean_reward": ppo_metrics.get("mean_reward", 0.0),
+        "approx_kl": ppo_metrics.get("approx_kl", 0.0),
+        "clip_fraction": ppo_metrics.get("clip_fraction", 0.0),
+    }
+    with open(path, "a", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=_csv_fields())
+        writer.writerow(flat_row)
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train PPO headlessly with checkpoints.")
     parser.add_argument("--num-episodes", type=int, default=5000)
     parser.add_argument("--checkpoint-dir", default="checkpoints")
     parser.add_argument("--metrics-path", default="results/headless_training_metrics.json")
+    parser.add_argument("--csv-path", default="results/headless_training_metrics.csv")
     parser.add_argument("--checkpoint-every", type=int, default=500)
+    parser.add_argument("--smoothing-window", type=int, default=50)
     parser.add_argument("--reward-scheme", default="selfish")
     parser.add_argument("--communication", action="store_true")
     parser.add_argument("--grid-size", type=int, default=15)
@@ -139,7 +248,9 @@ if __name__ == "__main__":
         num_episodes=args.num_episodes,
         checkpoint_dir=args.checkpoint_dir,
         metrics_path=args.metrics_path,
+        csv_path=args.csv_path,
         checkpoint_every=args.checkpoint_every,
+        smoothing_window=args.smoothing_window,
         reward_scheme=args.reward_scheme,
         use_communication=args.communication,
         grid_size=args.grid_size,
