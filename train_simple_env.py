@@ -34,6 +34,13 @@ def parse_args() -> argparse.Namespace:
 
 if __name__ == "__main__":
     args = parse_args()
+    latest_checkpoint_path = f"{args.checkpoint_dir.rstrip('/')}/ppo_latest.pt"
+    print("Simple-environment PPO pretraining")
+    print(f"Checkpoint directory: {args.checkpoint_dir}")
+    print(f"Latest checkpoint:    {latest_checkpoint_path}")
+    print(f"Metrics JSON:         {args.metrics_path}")
+    print(f"Metrics CSV:          {args.csv_path}")
+
     train_headless(
         num_episodes=args.num_episodes,
         checkpoint_dir=args.checkpoint_dir,
@@ -50,3 +57,4 @@ if __name__ == "__main__":
         max_steps=args.max_steps,
         device=args.device,
     )
+    print(f"Checkpoint written successfully: {latest_checkpoint_path}")

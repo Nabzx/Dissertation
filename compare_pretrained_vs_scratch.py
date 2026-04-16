@@ -12,6 +12,7 @@ import argparse
 import csv
 import json
 import os
+import sys
 from statistics import mean, pstdev
 from typing import Dict, List
 
@@ -154,6 +155,16 @@ def main() -> None:
         raise RuntimeError("Comparison requires PyTorch.")
 
     args = parse_args()
+    print(f"Loading pretrained checkpoint: {args.checkpoint}")
+    if not os.path.exists(args.checkpoint):
+        print()
+        print("Pretrained checkpoint not found.")
+        print("Run pretraining first to generate the checkpoint:")
+        print("python3 train_simple_env.py --num-episodes 5000")
+        print()
+        print(f"Expected checkpoint path: {args.checkpoint}")
+        sys.exit(1)
+
     probe_env = GridWorldEnv(
         grid_size=args.grid_size,
         num_agents=args.num_agents,
