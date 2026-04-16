@@ -46,7 +46,7 @@ class LiveEpisodeRenderer:
         self.show_resource_animation = show_resource_animation
         self.trail_length = 20
         self.perception_range = 3
-        self.communication_fade_steps = 4
+        self.communication_fade_steps = 3
         self.resource_anim_steps = 5
         self.agent_facing = {
             2: (0, 1),   # right
@@ -906,6 +906,15 @@ class LiveEpisodeRenderer:
 
             state["ttl"] -= 1
 
+    def reset_communication_visuals(self) -> None:
+        for state in self.communication_state.values():
+            state["ttl"] = 0
+            state["preview"] = ""
+        for agent_value in self.communication_lines.keys():
+            self.communication_lines[agent_value].set_visible(False)
+            self.communication_pulses[agent_value].set_visible(False)
+            self.communication_text[agent_value].set_visible(False)
+
     def _build_signal_curve(
         self,
         sender_pos: tuple[float, float],
@@ -1104,6 +1113,7 @@ def run_live_training(
         total_shaped_reward = 0.0
 
         if render_episode:
+            renderer.reset_communication_visuals()
             renderer.update(
                 env.grid.copy(),
                 episode_label,
