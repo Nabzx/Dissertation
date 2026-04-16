@@ -17,14 +17,19 @@ def save_grid_screenshot(grid: np.ndarray, filename: str, title: Optional[str] =
     Save a visual representation of the grid state.
 
     Args:
-        grid: 15x15 grid array (0=empty, 1=resource, 2=agent_0, 3=agent_1, 4=obstacle)
+        grid: grid array (0=empty, 1=resource, 2+=agents, max value=obstacle)
         filename: Output file path
         title: Optional title for the plot
     """
     fig, ax = plt.subplots(figsize=(10, 10))
 
-    # Create color map
-    # 0 = empty (white), 1 = resource (green), 2 = agent_0 (blue), 3 = agent_1 (red)
+    agent_palette = [
+        [0.0, 0.0, 1.0],   # blue
+        [1.0, 0.0, 0.0],   # red
+        [1.0, 0.6, 0.0],   # orange
+        [0.5, 0.0, 0.9],   # purple
+    ]
+    obstacle_value = int(np.max(grid))
     color_map = np.zeros((grid.shape[0], grid.shape[1], 3))
 
     for i in range(grid.shape[0]):
@@ -33,12 +38,10 @@ def save_grid_screenshot(grid: np.ndarray, filename: str, title: Optional[str] =
                 color_map[i, j] = [1.0, 1.0, 1.0]  # White
             elif grid[i, j] == 1:  # Resource
                 color_map[i, j] = [0.0, 0.8, 0.0]  # Green
-            elif grid[i, j] == 2:  # Agent 0
-                color_map[i, j] = [0.0, 0.0, 1.0]  # Blue
-            elif grid[i, j] == 3:  # Agent 1
-                color_map[i, j] = [1.0, 0.0, 0.0]  # Red
-            elif grid[i, j] == 4:  # Obstacle
+            elif grid[i, j] == obstacle_value and obstacle_value > 3:  # Obstacle
                 color_map[i, j] = [0.3, 0.3, 0.3]  # Dark grey
+            elif grid[i, j] >= 2:  # Agent
+                color_map[i, j] = agent_palette[(int(grid[i, j]) - 2) % len(agent_palette)]
 
     ax.imshow(color_map, origin="upper", interpolation="nearest")
     ax.set_xticks(np.arange(-0.5, grid.shape[1], 1), minor=True)
@@ -58,6 +61,8 @@ def save_grid_screenshot(grid: np.ndarray, filename: str, title: Optional[str] =
         Patch(facecolor="green", label="Resource"),
         Patch(facecolor="blue", label="Agent 0"),
         Patch(facecolor="red", label="Agent 1"),
+        Patch(facecolor="orange", label="Agent 2"),
+        Patch(facecolor="purple", label="Agent 3"),
         Patch(facecolor="darkgray", label="Obstacle"),
     ]
     ax.legend(handles=legend_elements, loc="upper right", bbox_to_anchor=(1.15, 1))
@@ -202,9 +207,10 @@ def save_trajectory_plot(trajectories: Dict[str, List[Tuple[int, int]]], grid_si
     fig, ax = plt.subplots(figsize=(10, 10))
 
     # Color mapping for agents
+    palette = ["blue", "red", "orange", "purple", "green", "brown"]
     agent_colors = {
-        "agent_0": "blue",
-        "agent_1": "red",
+        agent_id: palette[idx % len(palette)]
+        for idx, agent_id in enumerate(sorted(trajectories.keys()))
     }
 
     # Plot each agent's trajectory

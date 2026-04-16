@@ -1,8 +1,8 @@
 """
 2D Grid World Environment for Multi-Agent Resource Scarcity Simulation.
 
-This module implements a PettingZoo ParallelEnv with a 15x15 grid where
-two agents compete to collect non-renewable resources.
+This module implements a PettingZoo ParallelEnv with a grid where multiple
+agents compete or cooperate to collect resources.
 """
 
 import numpy as np
@@ -36,6 +36,7 @@ class GridWorldEnv(ParallelEnv):
         max_steps: int = 200,
         view_size: int = 5,
         partial_observability: bool = True,
+        num_agents: int = 4,
         seed: Optional[int] = None,
     ):
         """
@@ -51,9 +52,14 @@ class GridWorldEnv(ParallelEnv):
             view_size: Side length of the local observation window (default: 5)
             partial_observability: If True, return a local view per agent; if False,
                 return the full grid (original behaviour).
+            num_agents: Number of agents to spawn (default: 4)
             seed: Random seed for reproducibility
         """
+        if num_agents < 1:
+            raise ValueError("num_agents must be at least 1.")
+
         self.grid_size = grid_size
+        self.n_agents = num_agents
         self.num_resources = num_resources
         self.num_obstacles = num_obstacles
         self.resource_respawn_prob = resource_respawn_prob
@@ -64,11 +70,17 @@ class GridWorldEnv(ParallelEnv):
         self.seed = seed
         self.arena_mask = compute_octagon_mask(grid_size, grid_size)
 
+        # Grid encoding:
+        #   0 = empty, 1 = resource, agent values start at 2,
+        #   obstacle value is placed after the agent values.
+        self.resource_value = 1
+        self.agent_value_start = 2
+        self.obstacle_value = self.agent_value_start + self.n_agents
+
         # Agent IDs
-        self.agents = ["agent_0", "agent_1"]
+        self.agents = [f"agent_{idx}" for idx in range(self.n_agents)]
         self.possible_agents = self.agents.copy()
 
-        # Grid encoding: 0=empty, 1=resource, 2=agent_0, 3=agent_1, 4=obstacle
         self.grid = None
         self.agent_positions = {}
         self.resource_positions = []
@@ -78,13 +90,10 @@ class GridWorldEnv(ParallelEnv):
 
         # Logging data
         self.heatmaps = {
-            "agent_0": np.zeros((grid_size, grid_size), dtype=np.int32),
-            "agent_1": np.zeros((grid_size, grid_size), dtype=np.int32),
+            agent: np.zeros((grid_size, grid_size), dtype=np.int32)
+            for agent in self.agents
         }
-        self.resources_collected = {
-            "agent_0": 0,
-            "agent_1": 0,
-        }
+        self.resources_collected = {agent: 0 for agent in self.agents}
         self.initial_resource_positions = []
 
         # Action space: 0=stay, 1=up, 2=down, 3=left, 4=right
@@ -95,7 +104,7 @@ class GridWorldEnv(ParallelEnv):
         # - partial observability: (view_size, view_size)
         obs_shape = (view_size, view_size) if partial_observability else (grid_size, grid_size)
         self.observation_spaces = {
-            agent: Box(low=0, high=4, shape=obs_shape, dtype=np.int32)
+            agent: Box(low=0, high=self.obstacle_value, shape=obs_shape, dtype=np.int32)
             for agent in self.agents
         }
 
@@ -125,20 +134,17 @@ class GridWorldEnv(ParallelEnv):
 
         # Reset logging data
         self.heatmaps = {
-            "agent_0": np.zeros((self.grid_size, self.grid_size), dtype=np.int32),
-            "agent_1": np.zeros((self.grid_size, self.grid_size), dtype=np.int32),
+            agent: np.zeros((self.grid_size, self.grid_size), dtype=np.int32)
+            for agent in self.agents
         }
-        self.resources_collected = {
-            "agent_0": 0,
-            "agent_1": 0,
-        }
+        self.resources_collected = {agent: 0 for agent in self.agents}
 
         # Place obstacles first so agents/resources avoid blocked cells.
         self.obstacle_positions = []
         obstacle_count = 0
         while obstacle_count < self.num_obstacles:
             pos = self._sample_empty_arena_cell()
-            self.grid[pos[0], pos[1]] = 4
+            self.grid[pos[0], pos[1]] = self.obstacle_value
             self.obstacle_positions.append(pos)
             obstacle_count += 1
 
@@ -147,7 +153,7 @@ class GridWorldEnv(ParallelEnv):
         for i, agent in enumerate(self.agents):
             pos = self._sample_empty_arena_cell(exclude=set(self.agent_positions.values()))
             self.agent_positions[agent] = pos
-            self.grid[pos[0], pos[1]] = 2 + i  # 2 for agent_0, 3 for agent_1
+            self.grid[pos[0], pos[1]] = self.agent_value(agent)
 
         # Place resources randomly
         self.resource_positions = []
@@ -157,7 +163,7 @@ class GridWorldEnv(ParallelEnv):
 
         while resource_count < self.num_resources:
             pos = self._sample_empty_arena_cell(exclude=set(self.agent_positions.values()))
-            self.grid[pos[0], pos[1]] = 1  # Resource
+            self.grid[pos[0], pos[1]] = self.resource_value
             self.resource_positions.append(pos)
             self.initial_resource_positions.append(pos)
             resource_count += 1
@@ -190,20 +196,25 @@ class GridWorldEnv(ParallelEnv):
         for agent in self.agents:
             pos = self.agent_positions[agent]
             # Only clear if it's an agent marker, preserve resources
-            if self.grid[pos[0], pos[1]] in [2, 3]:  # Agent marker
+            if self.is_agent_value(self.grid[pos[0], pos[1]]):
                 # Check if there's a resource at this position (shouldn't happen, but be safe)
                 if pos in self.resource_positions:
-                    self.grid[pos[0], pos[1]] = 1  # Restore resource marker
+                    self.grid[pos[0], pos[1]] = self.resource_value
                 else:
                     self.grid[pos[0], pos[1]] = 0  # Clear to empty
 
         # Move agents and handle resource collection
         rewards = {}
+        occupied_positions = set(self.agent_positions.values())
         for agent in self.agents:
             action = actions[agent]
             pos = self.agent_positions[agent]
+            occupied_positions.discard(pos)
             new_pos = self._move_agent(pos, action)
+            if new_pos in occupied_positions:
+                new_pos = pos
             self.agent_positions[agent] = new_pos
+            occupied_positions.add(new_pos)
 
             # Check if agent collected a resource
             if new_pos in self.resource_positions:
@@ -211,7 +222,7 @@ class GridWorldEnv(ParallelEnv):
                 self.resources_collected[agent] += 1
                 self.resource_positions.remove(new_pos)
                 # Remove resource from grid
-                if self.grid[new_pos[0], new_pos[1]] == 1:
+                if self.grid[new_pos[0], new_pos[1]] == self.resource_value:
                     self.grid[new_pos[0], new_pos[1]] = 0
             else:
                 rewards[agent] = 0.0
@@ -221,10 +232,10 @@ class GridWorldEnv(ParallelEnv):
             pos = self.agent_positions[agent]
             # Mark agent position (cell should be empty or already cleared resource)
             if self.grid[pos[0], pos[1]] == 0:
-                self.grid[pos[0], pos[1]] = 2 + i
-            elif self.grid[pos[0], pos[1]] == 1:
+                self.grid[pos[0], pos[1]] = self.agent_value(agent)
+            elif self.grid[pos[0], pos[1]] == self.resource_value:
                 # Resource still there (shouldn't happen after collection, but handle it)
-                self.grid[pos[0], pos[1]] = 2 + i
+                self.grid[pos[0], pos[1]] = self.agent_value(agent)
 
         # Update heatmaps
         for agent in self.agents:
@@ -267,7 +278,7 @@ class GridWorldEnv(ParallelEnv):
         except RuntimeError:
             return
 
-        self.grid[pos[0], pos[1]] = 1
+        self.grid[pos[0], pos[1]] = self.resource_value
         self.resource_positions.append(pos)
         self.newly_spawned_resources.append(pos)
 
@@ -301,6 +312,20 @@ class GridWorldEnv(ParallelEnv):
         if new_pos in self.obstacle_positions:
             return pos
         return new_pos
+
+    def agent_value(self, agent_id: str) -> int:
+        """Return the grid marker value for an agent id."""
+        return self.agent_value_start + self.agents.index(agent_id)
+
+    def agent_id_from_value(self, value: int) -> Optional[str]:
+        """Return the agent id for a grid marker, or None if not an agent."""
+        if not self.is_agent_value(value):
+            return None
+        return self.agents[int(value) - self.agent_value_start]
+
+    def is_agent_value(self, value: int) -> bool:
+        """Return True if a grid value represents any agent."""
+        return self.agent_value_start <= int(value) < self.obstacle_value
 
     def is_inside_arena(self, x: int, y: int) -> bool:
         """

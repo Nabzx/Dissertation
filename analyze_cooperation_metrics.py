@@ -47,36 +47,32 @@ def compute_episode_metrics(
 
     for row in rows:
         resources = row.get("resources_collected", {})
-        agent_0 = int(resources.get("agent_0", 0))
-        agent_1 = int(resources.get("agent_1", 0))
-        collected = int(row.get("total_resources", agent_0 + agent_1))
+        agent_counts = {agent: int(count) for agent, count in resources.items()}
+        collected = int(row.get("total_resources", sum(agent_counts.values())))
         available = max(int(total_available), collected)
 
         efficiency = collected / available if available > 0 else 0.0
-        fairness = jains_fairness_index([agent_0, agent_1])
-        balance_gap = abs(agent_0 - agent_1)
+        fairness = jains_fairness_index(agent_counts.values())
+        balance_gap = max(agent_counts.values(), default=0) - min(agent_counts.values(), default=0)
         normalized_balance_gap = balance_gap / collected if collected > 0 else 0.0
         cooperation_score = efficiency * fairness
-        agent_0_survived = agent_0 > 0
-        agent_1_survived = agent_1 > 0
-        both_survived = agent_0_survived and agent_1_survived
-        any_survived = agent_0_survived or agent_1_survived
+        survival = {agent: count > 0 for agent, count in agent_counts.items()}
+        all_survived = all(survival.values()) if survival else False
+        any_survived = any(survival.values()) if survival else False
 
         metrics = {
             "episode": int(row["episode"]),
             "total_reward": float(row.get("total_reward", 0.0)),
             "total_collected": collected,
             "total_available_estimate": available,
-            "agent_0_resources": agent_0,
-            "agent_1_resources": agent_1,
+            "resources_collected": agent_counts,
             "resource_efficiency": efficiency,
             "jain_fairness": fairness,
             "cooperation_score": cooperation_score,
             "balance_gap": balance_gap,
             "normalized_balance_gap": normalized_balance_gap,
-            "agent_0_survived": agent_0_survived,
-            "agent_1_survived": agent_1_survived,
-            "both_survived": both_survived,
+            "agent_survival": survival,
+            "all_survived": all_survived,
             "any_survived": any_survived,
             "entropy": float((row.get("ppo_metrics") or {}).get("entropy", 0.0)),
         }
@@ -92,17 +88,23 @@ def compute_episode_metrics(
 
 
 def summarize_metrics(per_episode: List[Dict]) -> Dict:
+    agent_ids = sorted({
+        agent
+        for row in per_episode
+        for agent in row.get("agent_survival", {}).keys()
+    })
     summary = {
         "num_episodes": len(per_episode),
-        "survival_rates": {
-            "agent_0": _rate(row["agent_0_survived"] for row in per_episode),
-            "agent_1": _rate(row["agent_1_survived"] for row in per_episode),
-            "both_agents": _rate(row["both_survived"] for row in per_episode),
-            "at_least_one_agent": _rate(row["any_survived"] for row in per_episode),
-        },
+        "survival_rates": {},
         "metrics": {},
         "early_vs_late": {},
     }
+    summary["survival_rates"] = {
+        agent: _rate(row.get("agent_survival", {}).get(agent, False) for row in per_episode)
+        for agent in agent_ids
+    }
+    summary["survival_rates"]["all_agents"] = _rate(row["all_survived"] for row in per_episode)
+    summary["survival_rates"]["at_least_one_agent"] = _rate(row["any_survived"] for row in per_episode)
 
     metric_keys = [
         "total_reward",
@@ -167,10 +169,16 @@ def write_csv(path: str, rows: List[Dict]) -> None:
         os.makedirs(output_dir, exist_ok=True)
     if not rows:
         return
+    flat_rows = []
+    for row in rows:
+        flat = row.copy()
+        flat["resources_collected"] = json.dumps(flat.get("resources_collected", {}), sort_keys=True)
+        flat["agent_survival"] = json.dumps(flat.get("agent_survival", {}), sort_keys=True)
+        flat_rows.append(flat)
     with open(path, "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
+        writer = csv.DictWriter(f, fieldnames=list(flat_rows[0].keys()))
         writer.writeheader()
-        writer.writerows(rows)
+        writer.writerows(flat_rows)
 
 
 def parse_args() -> argparse.Namespace:

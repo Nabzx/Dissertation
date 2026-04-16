@@ -93,10 +93,7 @@ def run_episode(
 
     # Store episode trajectory and agent positions
     trajectory = []
-    agent_trajectories = {
-        "agent_0": [],
-        "agent_1": [],
-    }
+    agent_trajectories = {agent: [] for agent in env.agents}
     grid_sequence: List[np.ndarray] = []
     step_count = 0
 
@@ -241,9 +238,20 @@ def run_episode(
         "resources_collected": resources_collected.copy(),
         "total_resources_spawned": len(initial_resources),
         "initial_resource_positions": initial_resources,
-        "agent_0_survived": resources_collected["agent_0"] >= 1,
-        "agent_1_survived": resources_collected["agent_1"] >= 1,
-        "both_survived": resources_collected["agent_0"] >= 1 and resources_collected["agent_1"] >= 1,
+        "agent_survival": {
+            agent: resources_collected.get(agent, 0) >= 1
+            for agent in env.agents
+        },
+        "all_survived": all(resources_collected.get(agent, 0) >= 1 for agent in env.agents),
+        "any_survived": any(resources_collected.get(agent, 0) >= 1 for agent in env.agents),
+        # Backward-compatible aliases for older analysis scripts.
+        "agent_0_survived": resources_collected.get("agent_0", 0) >= 1,
+        "agent_1_survived": resources_collected.get("agent_1", 0) >= 1,
+        "both_survived": all(
+            resources_collected.get(agent, 0) >= 1
+            for agent in ["agent_0", "agent_1"]
+            if agent in resources_collected
+        ),
         "screenshot_path": screenshot_path,
         "heatmap_paths": heatmap_paths,
         "resource_dist_path": resource_dist_path,
@@ -270,6 +278,7 @@ def run_episode(
 def run_batch_simulation(
     num_episodes: int = 20,
     grid_size: int = 15,
+    num_agents: int = 4,
     num_resources: int = 10,
     max_steps: int = 200,
     save_screenshots: bool = True,
@@ -293,7 +302,12 @@ def run_batch_simulation(
         List of episode data dictionaries
     """
     # Create environment
-    env = GridWorldEnv(grid_size=grid_size, num_resources=num_resources, max_steps=max_steps)
+    env = GridWorldEnv(
+        grid_size=grid_size,
+        num_agents=num_agents,
+        num_resources=num_resources,
+        max_steps=max_steps,
+    )
 
     agent_type = agent_type.lower()
     reward_scheme = reward_scheme.lower()
@@ -313,8 +327,7 @@ def run_batch_simulation(
     ppo_agent: Optional[PPOAgent] = None
     if agent_type == "heuristic":
         agents: Optional[Dict[str, HeuristicAgent]] = {
-            "agent_0": HeuristicAgent("agent_0"),
-            "agent_1": HeuristicAgent("agent_1"),
+            agent: HeuristicAgent(agent) for agent in env.agents
         }
     elif agent_type == "ppo":
         agents = None
@@ -352,11 +365,8 @@ def run_batch_simulation(
 
         # Print summary
         resources = episode_data["resources_collected"]
-        print(
-            f"Agent 0: {resources['agent_0']} resources, "
-            f"Agent 1: {resources['agent_1']} resources, "
-            f"Steps: {episode_data['total_steps']}"
-        )
+        resource_text = ", ".join(f"{agent}: {count}" for agent, count in resources.items())
+        print(f"{resource_text}, Steps: {episode_data['total_steps']}")
 
     print(f"\nCompleted {num_episodes} episodes!")
     print(f"Results saved to {logs_dir}/ and {results_dir}/")

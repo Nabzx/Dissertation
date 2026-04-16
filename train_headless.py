@@ -32,6 +32,7 @@ def train_headless(
     reward_scheme: str = "selfish",
     use_communication: bool = False,
     grid_size: int = 15,
+    num_agents: int = 4,
     num_resources: int = 10,
     max_steps: int = 100,
     device: str = "cpu",
@@ -48,7 +49,12 @@ def train_headless(
         if output_dir:
             os.makedirs(output_dir, exist_ok=True)
 
-    env = GridWorldEnv(grid_size=grid_size, num_resources=num_resources, max_steps=max_steps)
+    env = GridWorldEnv(
+        grid_size=grid_size,
+        num_agents=num_agents,
+        num_resources=num_resources,
+        max_steps=max_steps,
+    )
     obs_dim = int(np.prod(env.observation_spaces[env.agents[0]].shape))
     if use_communication:
         obs_dim += int(CommunicationLayer(env).config.max_ints)
@@ -177,8 +183,7 @@ def _csv_fields() -> List[str]:
         "reward_ma",
         "total_resources",
         "resources_ma",
-        "agent_0_resources",
-        "agent_1_resources",
+        "resources_collected_json",
         "steps",
         "policy_loss",
         "policy_loss_ma",
@@ -207,8 +212,7 @@ def _append_csv_row(path: str, row: Dict) -> None:
         "reward_ma": row["reward_ma"],
         "total_resources": row["total_resources"],
         "resources_ma": row["resources_ma"],
-        "agent_0_resources": resources.get("agent_0", 0),
-        "agent_1_resources": resources.get("agent_1", 0),
+        "resources_collected_json": json.dumps(resources, sort_keys=True),
         "steps": row["steps"],
         "policy_loss": ppo_metrics.get("policy_loss", 0.0),
         "policy_loss_ma": row["policy_loss_ma"],
@@ -236,6 +240,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--reward-scheme", default="selfish")
     parser.add_argument("--communication", action="store_true")
     parser.add_argument("--grid-size", type=int, default=15)
+    parser.add_argument("--num-agents", type=int, default=4)
     parser.add_argument("--num-resources", type=int, default=10)
     parser.add_argument("--max-steps", type=int, default=100)
     parser.add_argument("--device", default="cpu")
@@ -254,6 +259,7 @@ if __name__ == "__main__":
         reward_scheme=args.reward_scheme,
         use_communication=args.communication,
         grid_size=args.grid_size,
+        num_agents=args.num_agents,
         num_resources=args.num_resources,
         max_steps=args.max_steps,
         device=args.device,

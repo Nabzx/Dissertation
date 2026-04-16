@@ -26,6 +26,7 @@ def demo_trained_agent(
     reward_scheme: str = "selfish",
     use_communication: bool = False,
     grid_size: int = 15,
+    num_agents: int = 4,
     num_resources: int = 10,
     max_steps: int = 100,
     interval: int = 50,
@@ -38,7 +39,12 @@ def demo_trained_agent(
     if not TORCH_AVAILABLE:
         raise RuntimeError("Demoing a trained PPO checkpoint requires PyTorch.")
 
-    env = GridWorldEnv(grid_size=grid_size, num_resources=num_resources, max_steps=max_steps)
+    env = GridWorldEnv(
+        grid_size=grid_size,
+        num_agents=num_agents,
+        num_resources=num_resources,
+        max_steps=max_steps,
+    )
     ppo_agent = PPOAgent.load(checkpoint_path, device=device)
     ppo_agent.model.eval()
 
@@ -97,6 +103,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--reward-scheme", default="selfish")
     parser.add_argument("--communication", action="store_true")
     parser.add_argument("--grid-size", type=int, default=15)
+    parser.add_argument("--num-agents", type=int, default=4)
     parser.add_argument("--num-resources", type=int, default=10)
     parser.add_argument("--max-steps", type=int, default=100)
     parser.add_argument("--interval", type=int, default=50)
@@ -113,6 +120,7 @@ if __name__ == "__main__":
         reward_scheme=args.reward_scheme,
         use_communication=args.communication,
         grid_size=args.grid_size,
+        num_agents=args.num_agents,
         num_resources=args.num_resources,
         max_steps=args.max_steps,
         interval=args.interval,

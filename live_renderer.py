@@ -35,6 +35,7 @@ class LiveEpisodeRenderer:
         show_perception: bool = True,
         show_communication: bool = True,
         show_resource_animation: bool = True,
+        obstacle_value: Optional[int] = None,
     ):
         self.smoothing_window = 50
         self.plot_update_every = 10
@@ -50,10 +51,11 @@ class LiveEpisodeRenderer:
         self.perception_range = 3
         self.communication_fade_steps = 3
         self.resource_anim_steps = 5
-        self.agent_facing = {
-            2: (0, 1),   # right
-            3: (0, -1),  # left
-        }
+        self.obstacle_value = int(obstacle_value) if obstacle_value is not None else int(np.max(initial_grid))
+        self.agent_values = list(range(2, self.obstacle_value))
+        self.agent_facing = {agent_value: (0, 1) for agent_value in self.agent_values}
+        self.agent_colors = ["#38bdf8", "#f43f5e", "#f59e0b", "#a78bfa", "#22c55e", "#f97316"]
+        self.agent_edge_colors = ["#0ea5e9", "#be123c", "#d97706", "#7c3aed", "#15803d", "#c2410c"]
         self.arena_palette = {
             "void": "#050608",
             "panel": "#0c0f14",
@@ -63,10 +65,10 @@ class LiveEpisodeRenderer:
             "tile_edge": "#2a323a",
             "wall": "#9ca3af",
             "wall_glow": "#c7a76a",
-            "agent_0": "#38bdf8",
-            "agent_0_edge": "#0ea5e9",
-            "agent_1": "#f43f5e",
-            "agent_1_edge": "#be123c",
+            "agent_0": self.agent_colors[0],
+            "agent_0_edge": self.agent_edge_colors[0],
+            "agent_1": self.agent_colors[1],
+            "agent_1_edge": self.agent_edge_colors[1],
             "resource": "#8bff63",
             "resource_edge": "#3b7f2d",
             "obstacle": "#4b5563",
@@ -85,12 +87,12 @@ class LiveEpisodeRenderer:
             "resource_flash": "#fde68a",
         }
         self.agent_trails = {
-            2: deque(maxlen=self.trail_length),
-            3: deque(maxlen=self.trail_length),
+            agent_value: deque(maxlen=self.trail_length)
+            for agent_value in self.agent_values
         }
         self.communication_state = {
-            2: {"ttl": 0, "receiver": 3, "preview": ""},
-            3: {"ttl": 0, "receiver": 2, "preview": ""},
+            agent_value: {"ttl": 0, "receiver": self._default_receiver(agent_value), "preview": ""}
+            for agent_value in self.agent_values
         }
         self.previous_resource_positions: set[tuple[int, int]] = set()
         self.resource_spawn_state: Dict[tuple[int, int], int] = {}
@@ -184,13 +186,10 @@ class LiveEpisodeRenderer:
         )
         self.ax_grid.add_patch(self.arena_wall)
 
-        self.perception_cell_patches = {
-            2: [],
-            3: [],
-        }
+        self.perception_cell_patches = {agent_value: [] for agent_value in self.agent_values}
         perception_fill = {
-            2: self.arena_palette["perception_0"],
-            3: self.arena_palette["perception_1"],
+            agent_value: self._agent_color(agent_value)
+            for agent_value in self.agent_values
         }
         for agent_value, color in perception_fill.items():
             for _ in range(6):
@@ -207,13 +206,10 @@ class LiveEpisodeRenderer:
                 self.perception_cell_patches[agent_value].append(patch)
                 self.ax_grid.add_patch(patch)
 
-        self.perception_ray_lines = {
-            2: [],
-            3: [],
-        }
+        self.perception_ray_lines = {agent_value: [] for agent_value in self.agent_values}
         ray_colors = {
-            2: self.arena_palette["perception_0"],
-            3: self.arena_palette["perception_1"],
+            agent_value: self._agent_color(agent_value)
+            for agent_value in self.agent_values
         }
         for agent_value, color in ray_colors.items():
             for _ in range(3):
@@ -234,8 +230,8 @@ class LiveEpisodeRenderer:
         self.communication_pulses = {}
         self.communication_text = {}
         communication_colors = {
-            2: (self.arena_palette["comm_0"], self.arena_palette["comm_0_alt"]),
-            3: (self.arena_palette["comm_1"], self.arena_palette["comm_1_alt"]),
+            agent_value: (self._agent_color(agent_value), self._agent_edge_color(agent_value))
+            for agent_value in self.agent_values
         }
         for agent_value, (primary_color, secondary_color) in communication_colors.items():
             line = Line2D(
@@ -334,37 +330,25 @@ class LiveEpisodeRenderer:
                 self.obstacle_patches.append(obstacle_patch)
                 self.ax_grid.add_patch(obstacle_patch)
 
-        self.agent_patches = {
-            2: Circle(
+        self.agent_patches = {}
+        for agent_value in self.agent_values:
+            self.agent_patches[agent_value] = Circle(
                 (0.5, 0.5),
                 radius=0.3,
-                facecolor=self.arena_palette["agent_0"],
-                edgecolor=self.arena_palette["agent_0_edge"],
+                facecolor=self._agent_color(agent_value),
+                edgecolor=self._agent_edge_color(agent_value),
                 linewidth=2.0,
                 zorder=4,
                 visible=False,
-            ),
-            3: Circle(
-                (0.5, 0.5),
-                radius=0.3,
-                facecolor=self.arena_palette["agent_1"],
-                edgecolor=self.arena_palette["agent_1_edge"],
-                linewidth=2.0,
-                zorder=4,
-                visible=False,
-            ),
-        }
+            )
         for patch in self.agent_patches.values():
             self.ax_grid.add_patch(patch)
 
         trail_colors = {
-            2: self.arena_palette["trail_0"],
-            3: self.arena_palette["trail_1"],
+            agent_value: self._agent_color(agent_value)
+            for agent_value in self.agent_values
         }
-        self.trail_patches = {
-            2: [],
-            3: [],
-        }
+        self.trail_patches = {agent_value: [] for agent_value in self.agent_values}
         for agent_value, color in trail_colors.items():
             for _ in range(self.trail_length):
                 trail_patch = Circle(
@@ -380,11 +364,13 @@ class LiveEpisodeRenderer:
                 self.ax_grid.add_patch(trail_patch)
 
         legend_handles = [
-            Line2D([0], [0], marker="o", color="none", markerfacecolor=self.arena_palette["agent_0"], markeredgecolor=self.arena_palette["agent_0_edge"], markersize=9, label="Agent 0"),
-            Line2D([0], [0], marker="o", color="none", markerfacecolor=self.arena_palette["agent_1"], markeredgecolor=self.arena_palette["agent_1_edge"], markersize=9, label="Agent 1"),
+            Line2D([0], [0], marker="o", color="none", markerfacecolor=self._agent_color(agent_value), markeredgecolor=self._agent_edge_color(agent_value), markersize=9, label=f"Agent {idx}")
+            for idx, agent_value in enumerate(self.agent_values)
+        ]
+        legend_handles.extend([
             Line2D([0], [0], marker="o", color="none", markerfacecolor=self.arena_palette["resource"], markeredgecolor=self.arena_palette["resource_edge"], markersize=7, label="Resource"),
             Rectangle((0, 0), 1, 1, facecolor=self.arena_palette["obstacle"], edgecolor=self.arena_palette["obstacle_edge"], label="Obstacle"),
-        ]
+        ])
         self.ax_grid.legend(
             handles=legend_handles,
             loc="upper center",
@@ -473,6 +459,27 @@ class LiveEpisodeRenderer:
         base[..., 2] = 0.120 + 0.045 * gradient
         bg_axis.imshow(base, aspect="auto", extent=(0, 1, 0, 1), origin="lower")
 
+    def _agent_index(self, agent_value: int) -> int:
+        return int(agent_value) - 2
+
+    def _agent_color(self, agent_value: int) -> str:
+        return self.agent_colors[self._agent_index(agent_value) % len(self.agent_colors)]
+
+    def _agent_edge_color(self, agent_value: int) -> str:
+        return self.agent_edge_colors[self._agent_index(agent_value) % len(self.agent_edge_colors)]
+
+    def _agent_id(self, agent_value: int) -> str:
+        return f"agent_{self._agent_index(agent_value)}"
+
+    def _agent_value(self, agent_id: str) -> int:
+        return 2 + int(agent_id.split("_")[-1])
+
+    def _default_receiver(self, agent_value: int) -> int:
+        if len(self.agent_values) <= 1:
+            return agent_value
+        idx = self.agent_values.index(agent_value)
+        return self.agent_values[(idx + 1) % len(self.agent_values)]
+
     def _style_ui_axis(self, axis, title: str) -> None:
         axis.set_facecolor("white")
         axis.set_title(title, color="#111827")
@@ -528,17 +535,21 @@ class LiveEpisodeRenderer:
             0.1, 0.705, "", color="#cbd5e1", fontsize=8.6, va="top"
         )
 
-        card_specs = {
-            "agent_0": {"y": 0.38, "accent": self.arena_palette["agent_0"], "edge": self.arena_palette["agent_0_edge"], "title": "Agent 0"},
-            "agent_1": {"y": 0.07, "accent": self.arena_palette["agent_1"], "edge": self.arena_palette["agent_1_edge"], "title": "Agent 1"},
-        }
         self.hud_agent_text = {}
-        for agent_id, spec in card_specs.items():
+        card_count = max(1, len(self.agent_values))
+        top = 0.64
+        bottom = 0.05
+        gap = 0.018
+        card_height = max(0.105, min(0.19, (top - bottom - gap * (card_count - 1)) / card_count))
+        for idx, agent_value in enumerate(self.agent_values):
+            agent_id = self._agent_id(agent_value)
+            y = top - (idx + 1) * card_height - idx * gap
+            accent = self._agent_color(agent_value)
             self.ax_hud.add_patch(
                 Rectangle(
-                    (0.06, spec["y"]),
+                    (0.06, y),
                     0.88,
-                    0.27,
+                    card_height,
                     facecolor="#111827",
                     edgecolor="#1f2937",
                     linewidth=1.1,
@@ -547,31 +558,31 @@ class LiveEpisodeRenderer:
             )
             self.ax_hud.add_patch(
                 Rectangle(
-                    (0.06, spec["y"]),
+                    (0.06, y),
                     0.018,
-                    0.27,
-                    facecolor=spec["accent"],
+                    card_height,
+                    facecolor=accent,
                     edgecolor="none",
                     zorder=0.6,
                 )
             )
             self.ax_hud.text(
                 0.1,
-                spec["y"] + 0.235,
-                spec["title"],
-                color=spec["accent"],
-                fontsize=10.2,
+                y + card_height - 0.03,
+                f"Agent {idx}",
+                color=accent,
+                fontsize=9.4,
                 fontweight="bold",
                 va="top",
             )
             self.hud_agent_text[agent_id] = self.ax_hud.text(
                 0.1,
-                spec["y"] + 0.19,
+                y + card_height - 0.068,
                 "",
                 color="#e5e7eb",
-                fontsize=7.6,
+                fontsize=6.8 if card_count > 2 else 7.6,
                 va="top",
-                linespacing=1.38,
+                linespacing=1.25,
             )
 
     def update_hud(self, hud_state: Optional[Dict[str, object]]) -> None:
@@ -595,7 +606,7 @@ class LiveEpisodeRenderer:
         self.hud_reward_text.set_text(f"Episode reward: {episode_reward:.2f}")
 
         agent_states = hud_state.get("agents", {})
-        for agent_id in ["agent_0", "agent_1"]:
+        for agent_id in self.hud_agent_text.keys():
             info = agent_states.get(agent_id, {})
             resources = int(info.get("resources", 0))
             cumulative = int(info.get("cumulative_resources", 0))
@@ -609,7 +620,6 @@ class LiveEpisodeRenderer:
                 f"Position: {position}\n"
                 f"Facing: {facing}\n"
                 f"Comms: {comm_status}\n"
-                f"Status: {status}\n"
                 f"Action: {action}"
             )
 
@@ -640,7 +650,7 @@ class LiveEpisodeRenderer:
         self._update_perception(grid)
         self._update_resource_animation_state(grid)
 
-        obstacle_mask = grid == 4
+        obstacle_mask = grid == self.obstacle_value
         for patch, is_obstacle in zip(self.obstacle_patches, obstacle_mask.flatten()):
             row = int(patch.get_y() - 0.12)
             col = int(patch.get_x() - 0.12)
@@ -790,7 +800,9 @@ class LiveEpisodeRenderer:
         for agent_id, action in actions.items():
             if action not in action_to_direction:
                 continue
-            agent_value = 2 if agent_id == "agent_0" else 3
+            agent_value = self._agent_value(agent_id)
+            if agent_value not in self.agent_facing:
+                continue
             self.agent_facing[agent_value] = action_to_direction[action]
 
     def _update_perception(self, grid: np.ndarray) -> None:
@@ -873,7 +885,7 @@ class LiveEpisodeRenderer:
                 points.append(cell_center)
                 cells.append((target_row, target_col))
 
-                if grid[target_row, target_col] == 4:
+                if grid[target_row, target_col] == self.obstacle_value:
                     blocked = True
                     break
 
@@ -977,7 +989,7 @@ class LiveEpisodeRenderer:
         distance = max(np.hypot(dx, dy), 1e-6)
         perp_x = -dy / distance
         perp_y = dx / distance
-        bend = 0.18 if sender == 2 else -0.18
+        bend = 0.18 if self._agent_index(sender) % 2 == 0 else -0.18
         control_x = mid_x + perp_x * distance * bend
         control_y = mid_y + perp_y * distance * bend
         t = np.linspace(0.0, 1.0, 20)
@@ -1256,7 +1268,8 @@ class PlaybackController:
         resources_collected = summary.get("resources_collected", {})
         recorded_positions = frame.get("agent_positions", {})
         agents_state = {}
-        for agent_id, agent_value in {"agent_0": 2, "agent_1": 3}.items():
+        for agent_value in self.renderer.agent_values:
+            agent_id = self.renderer._agent_id(agent_value)
             positions = np.argwhere(grid == agent_value)
             position = recorded_positions.get(agent_id)
             if position is None:
@@ -1332,6 +1345,7 @@ def run_live_training(
     reward_scheme: str = "selfish",
     use_communication: bool = False,
     grid_size: int = 15,
+    num_agents: int = 4,
     num_resources: int = 10,
     max_steps: int = 100,
     render_delay: float = 0.001,
@@ -1349,7 +1363,12 @@ def run_live_training(
     if mode not in {"live", "playback"}:
         raise ValueError("mode must be 'live' or 'playback'")
 
-    env = GridWorldEnv(grid_size=grid_size, num_resources=num_resources, max_steps=max_steps)
+    env = GridWorldEnv(
+        grid_size=grid_size,
+        num_agents=num_agents,
+        num_resources=num_resources,
+        max_steps=max_steps,
+    )
     max_possible_reward = float(num_resources * len(env.agents))
 
     obs_shape = env.observation_spaces[env.agents[0]].shape
@@ -1368,6 +1387,7 @@ def run_live_training(
         view_size=env.view_size,
         show_perception=show_perception,
         show_communication=show_communication,
+        obstacle_value=env.obstacle_value,
     )
     renderer.set_speed_delay(render_delay)
     if mode == "live":
@@ -1377,10 +1397,7 @@ def run_live_training(
     history: List[List[Dict[str, object]]] = []
     recent_rewards: List[float] = []
     recent_resources: List[int] = []
-    cumulative_resources_run = {
-        "agent_0": 0,
-        "agent_1": 0,
-    }
+    cumulative_resources_run = {agent: 0 for agent in env.agents}
     action_labels = {
         0: "stay",
         1: "up",
@@ -1397,7 +1414,7 @@ def run_live_training(
         record_history: bool = True,
     ) -> Dict:
         def facing_label(agent_id: str) -> str:
-            agent_value = 2 if agent_id == "agent_0" else 3
+            agent_value = renderer._agent_value(agent_id)
             facing = renderer.agent_facing.get(agent_value, (0, 1))
             facing_map = {
                 (-1, 0): "up",
@@ -1414,13 +1431,10 @@ def run_live_training(
             phase: str,
         ) -> Dict[str, object]:
             resources_now = env.get_resources_collected()
-            comm_lookup = {
-                "agent_0": "idle",
-                "agent_1": "idle",
-            }
+            comm_lookup = {agent: "idle" for agent in env.agents}
             if communication_events:
                 for event in communication_events:
-                    sender_id = "agent_0" if int(event["sender"]) == 2 else "agent_1"
+                    sender_id = renderer._agent_id(int(event["sender"]))
                     preview = str(event.get("preview", "msg"))
                     comm_lookup[sender_id] = f"sending {preview}"
 
@@ -1553,8 +1567,8 @@ def run_live_training(
                     preview = f"{int(msg[1]):+d},{int(msg[2]):+d},{int(msg[3])}"
                     communication_events.append(
                         {
-                            "sender": 2 if sender_id == "agent_0" else 3,
-                            "receiver": 2 if receiver_id == "agent_0" else 3,
+                            "sender": env.agent_value(sender_id),
+                            "receiver": env.agent_value(receiver_id),
                             "preview": preview,
                         }
                     )
