@@ -36,6 +36,7 @@ class LiveEpisodeRenderer:
         show_communication: bool = True,
         show_resource_animation: bool = True,
         obstacle_value: Optional[int] = None,
+        agent_styles: Optional[Dict[str, Dict[str, str]]] = None,
     ):
         self.smoothing_window = 50
         self.plot_update_every = 10
@@ -56,6 +57,23 @@ class LiveEpisodeRenderer:
         self.agent_facing = {agent_value: (0, 1) for agent_value in self.agent_values}
         self.agent_colors = ["#38bdf8", "#f43f5e", "#f59e0b", "#a78bfa", "#22c55e", "#f97316"]
         self.agent_edge_colors = ["#0ea5e9", "#be123c", "#d97706", "#7c3aed", "#15803d", "#c2410c"]
+        self.agent_labels = {
+            agent_value: f"Agent {agent_value - 2}"
+            for agent_value in self.agent_values
+        }
+        if agent_styles:
+            for agent_value in self.agent_values:
+                agent_id = f"agent_{agent_value - 2}"
+                style = agent_styles.get(agent_id, {})
+                color = style.get("color")
+                edge = style.get("edge_color")
+                label = style.get("label")
+                if color:
+                    self.agent_colors[self._agent_index(agent_value) % len(self.agent_colors)] = color
+                if edge:
+                    self.agent_edge_colors[self._agent_index(agent_value) % len(self.agent_edge_colors)] = edge
+                if label:
+                    self.agent_labels[agent_value] = label
         self.arena_palette = {
             "void": "#050608",
             "panel": "#0c0f14",
@@ -364,8 +382,8 @@ class LiveEpisodeRenderer:
                 self.ax_grid.add_patch(trail_patch)
 
         legend_handles = [
-            Line2D([0], [0], marker="o", color="none", markerfacecolor=self._agent_color(agent_value), markeredgecolor=self._agent_edge_color(agent_value), markersize=9, label=f"Agent {idx}")
-            for idx, agent_value in enumerate(self.agent_values)
+            Line2D([0], [0], marker="o", color="none", markerfacecolor=self._agent_color(agent_value), markeredgecolor=self._agent_edge_color(agent_value), markersize=9, label=self.agent_labels[agent_value])
+            for agent_value in self.agent_values
         ]
         legend_handles.extend([
             Line2D([0], [0], marker="o", color="none", markerfacecolor=self.arena_palette["resource"], markeredgecolor=self.arena_palette["resource_edge"], markersize=7, label="Resource"),
@@ -613,13 +631,13 @@ class LiveEpisodeRenderer:
             position = info.get("position", ("-", "-"))
             facing = info.get("facing", "unknown")
             comm_status = info.get("communication", "offline")
+            agent_type = info.get("agent_type", "unknown")
             status = info.get("status", "Active")
             action = info.get("recent_action", "n/a")
             self.hud_agent_text[agent_id].set_text(
+                f"Type: {agent_type}\n"
                 f"Resources: {resources} (run {cumulative})\n"
                 f"Position: {position}\n"
-                f"Facing: {facing}\n"
-                f"Comms: {comm_status}\n"
                 f"Action: {action}"
             )
 
