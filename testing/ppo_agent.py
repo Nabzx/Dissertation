@@ -13,7 +13,8 @@ concatenating a small communication vector).
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
+import os
 from typing import Dict, List, Tuple
 
 import numpy as np
@@ -348,3 +349,46 @@ class PPOAgent:
         }
         self.update_history.append(metrics)
         return metrics
+
+    def save(self, path: str) -> None:
+        """Save model weights, optimizer state, config, and metric history."""
+        if not TORCH_AVAILABLE:
+            raise RuntimeError("Cannot save PPOAgent because PyTorch is not installed.")
+
+        save_dir = os.path.dirname(path)
+        if save_dir:
+            os.makedirs(save_dir, exist_ok=True)
+
+        torch.save(
+            {
+                "obs_dim": self.obs_dim,
+                "n_actions": self.n_actions,
+                "config": asdict(self.config),
+                "model_state_dict": self.model.state_dict(),
+                "optimizer_state_dict": self.optimizer.state_dict(),
+                "update_history": self.update_history,
+            },
+            path,
+        )
+
+    @classmethod
+    def load(cls, path: str, device: str = "cpu") -> "PPOAgent":
+        """Load a saved PPOAgent checkpoint."""
+        if not TORCH_AVAILABLE:
+            raise RuntimeError("Cannot load PPOAgent because PyTorch is not installed.")
+
+        checkpoint = torch.load(path, map_location=torch.device(device))
+        config = PPOConfig(**checkpoint.get("config", {}))
+        agent = cls(
+            obs_dim=int(checkpoint["obs_dim"]),
+            n_actions=int(checkpoint["n_actions"]),
+            config=config,
+            device=device,
+        )
+        agent.model.load_state_dict(checkpoint["model_state_dict"])
+        optimizer_state = checkpoint.get("optimizer_state_dict")
+        if optimizer_state is not None:
+            agent.optimizer.load_state_dict(optimizer_state)
+        agent.update_history = list(checkpoint.get("update_history", []))
+        agent.reset_buffer()
+        return agent

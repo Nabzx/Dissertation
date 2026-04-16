@@ -37,6 +37,7 @@ def run_episode(
     reward_scheme: str = "selfish",
     use_communication: bool = False,
     render: bool = False,
+    train_policy: bool = True,
 ) -> Dict:
     """
     Run a single episode of the simulation.
@@ -55,6 +56,7 @@ def run_episode(
         reward_scheme: "selfish", "mixed", or "fully_cooperative" (shaping for PPO; logged for all)
         use_communication: If True, augment PPO observations with a bandwidth-limited message vector
         render: If True, capture full-grid states across the episode for animation
+        train_policy: If False, run PPO inference only and skip buffer/update logic
 
     Returns:
         Dict containing episode data
@@ -85,7 +87,7 @@ def run_episode(
     if agent_type == "heuristic":
         for agent in agents.values():
             agent.reset()
-    else:
+    elif train_policy:
         # Keep PPO updates episode-scoped for simplicity.
         ppo_agent.reset_buffer()
 
@@ -146,7 +148,7 @@ def run_episode(
         total_shaped_reward += sum(shaped_rewards.values())
 
         # Store PPO transitions (after env.step, using shaped reward + done).
-        if agent_type == "ppo":
+        if agent_type == "ppo" and train_policy:
             for agent_id in env.agents:
                 done = bool(terminations[agent_id] or truncations[agent_id])
                 ppo_agent.store_transition(
@@ -192,7 +194,7 @@ def run_episode(
 
     # PPO update at the end of the episode.
     ppo_metrics = None
-    if agent_type == "ppo":
+    if agent_type == "ppo" and train_policy:
         try:
             ppo_metrics = ppo_agent.update(last_value=0.0, last_done=True)
         except RuntimeError as exc:
