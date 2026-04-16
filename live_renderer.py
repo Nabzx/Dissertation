@@ -45,6 +45,7 @@ class LiveEpisodeRenderer:
         self.show_perception = show_perception
         self.show_communication = show_communication
         self.show_resource_animation = show_resource_animation
+        self.speed_delay = 0.001
         self.trail_length = 20
         self.perception_range = 3
         self.communication_fade_steps = 3
@@ -595,7 +596,7 @@ class LiveEpisodeRenderer:
         self.text.set_text(f"Episode {episode}/{num_episodes} | Step {step}")
         self.update_hud(hud_state)
         self.fig.canvas.draw_idle()
-        plt.pause(render_delay)
+        plt.pause(self.get_speed_delay(render_delay))
 
     def _update_environment(
         self,
@@ -982,7 +983,45 @@ class LiveEpisodeRenderer:
 
     def refresh(self, render_delay: float) -> None:
         self.fig.canvas.draw_idle()
-        plt.pause(render_delay)
+        plt.pause(self.get_speed_delay(render_delay))
+
+    def get_speed_delay(self, fallback_delay: float = 0.001) -> float:
+        delay = getattr(self, "speed_delay", fallback_delay)
+        return float(np.clip(delay, 0.0001, 0.1))
+
+    def set_speed_delay(self, delay: float) -> None:
+        self.speed_delay = float(np.clip(delay, 0.0001, 0.1))
+
+    def set_speed_preset(self, delay: float) -> None:
+        self.set_speed_delay(delay)
+        if hasattr(self, "live_speed_slider"):
+            self.live_speed_slider.set_val(self.speed_delay)
+
+    def setup_live_speed_controls(self, initial_delay: float) -> None:
+        self.set_speed_delay(initial_delay)
+        self.fig.subplots_adjust(bottom=0.24)
+
+        ax_speed = self.fig.add_axes([0.08, 0.06, 0.46, 0.025])
+        self.live_speed_slider = Slider(
+            ax_speed,
+            "Delay",
+            0.0001,
+            0.1,
+            valinit=self.speed_delay,
+            valfmt="%.4f",
+        )
+        self.live_speed_slider.on_changed(self.set_speed_delay)
+
+        preset_specs = [
+            ("Slow", [0.58, 0.045, 0.07, 0.045], 0.1),
+            ("Normal", [0.66, 0.045, 0.08, 0.045], 0.01),
+            ("Fast", [0.75, 0.045, 0.07, 0.045], 0.0001),
+        ]
+        self.live_speed_buttons = []
+        for label, rect, delay in preset_specs:
+            button = Button(self.fig.add_axes(rect), label)
+            button.on_clicked(lambda _event, d=delay: self.set_speed_preset(d))
+            self.live_speed_buttons.append(button)
 
     def close(self) -> None:
         plt.ioff()
@@ -1019,7 +1058,7 @@ class PlaybackController:
 
         ax_episode = self.renderer.fig.add_axes([0.08, 0.15, 0.56, 0.025])
         ax_step = self.renderer.fig.add_axes([0.08, 0.105, 0.56, 0.025])
-        ax_speed = self.renderer.fig.add_axes([0.08, 0.06, 0.56, 0.025])
+        ax_speed = self.renderer.fig.add_axes([0.08, 0.06, 0.46, 0.025])
 
         self.episode_slider = Slider(
             ax_episode,
@@ -1039,11 +1078,13 @@ class PlaybackController:
         )
         self.speed_slider = Slider(
             ax_speed,
-            "Speed",
-            0.25,
-            8.0,
-            valinit=1.0,
+            "Delay",
+            0.0001,
+            0.1,
+            valinit=self.renderer.get_speed_delay(0.01),
+            valfmt="%.4f",
         )
+        self.speed_slider.on_changed(self.renderer.set_speed_delay)
 
         self.episode_slider.on_changed(self._on_episode_slider)
         self.step_slider.on_changed(self._on_step_slider)
@@ -1054,6 +1095,9 @@ class PlaybackController:
             ("Ep >>", [0.89, 0.13, 0.075, 0.045], self.next_episode),
             ("- Step", [0.805, 0.07, 0.075, 0.045], self.prev_step),
             ("Step +", [0.89, 0.07, 0.075, 0.045], self.next_step),
+            ("Slow", [0.58, 0.045, 0.07, 0.045], lambda: self.set_speed_preset(0.1)),
+            ("Normal", [0.66, 0.045, 0.08, 0.045], lambda: self.set_speed_preset(0.01)),
+            ("Fast", [0.75, 0.045, 0.07, 0.045], lambda: self.set_speed_preset(0.0001)),
         ]
         self.buttons = []
         for label, rect, callback in button_specs:
@@ -1149,6 +1193,9 @@ class PlaybackController:
     def toggle_play(self) -> None:
         self.playing = not self.playing
 
+    def set_speed_preset(self, delay: float) -> None:
+        self.speed_slider.set_val(float(np.clip(delay, 0.0001, 0.1)))
+
     def prev_episode(self) -> None:
         self.current_episode = max(0, self.current_episode - 1)
         self.current_step = 0
@@ -1186,7 +1233,7 @@ class PlaybackController:
         while plt.fignum_exists(self.renderer.fig.number):
             if self.playing:
                 self.next_step()
-            delay = max(0.001, 0.12 / float(self.speed_slider.val))
+            delay = self.renderer.get_speed_delay(float(self.speed_slider.val))
             plt.pause(delay)
 
 
@@ -1228,6 +1275,9 @@ def run_live_training(
         show_perception=show_perception,
         show_communication=show_communication,
     )
+    renderer.set_speed_delay(render_delay)
+    if mode == "live":
+        renderer.setup_live_speed_controls(render_delay)
 
     episode_summaries: List[Dict] = []
     history: List[List[np.ndarray]] = []
