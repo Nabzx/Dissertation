@@ -33,6 +33,7 @@ def demo_trained_agent(
     interval: int = 50,
     save_gif_dir: Optional[str] = None,
     device: str = "cpu",
+    environment_name: str = "main_arena",
 ) -> None:
     """
     Load a trained PPO policy and visualize it without further training.
@@ -81,7 +82,7 @@ def demo_trained_agent(
         resources = episode_data["resources_collected"]
         total_reward = float(episode_data["total_shaped_reward"])
         print(
-            f"Demo episode {episode + 1}/{num_episodes}: "
+            f"{environment_name} demo episode {episode + 1}/{num_episodes}: "
             f"resources={resources}, total_reward={total_reward:.2f}"
         )
 
@@ -112,6 +113,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--interval", type=int, default=50)
     parser.add_argument("--save-gif-dir", default=None)
     parser.add_argument("--device", default="cpu")
+    parser.add_argument("--environment-name", default="main_arena")
     return parser.parse_args()
 
 
@@ -130,4 +132,5 @@ if __name__ == "__main__":
         interval=args.interval,
         save_gif_dir=args.save_gif_dir,
         device=args.device,
+        environment_name=args.environment_name,
     )
