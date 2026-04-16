@@ -31,6 +31,8 @@ class GridWorldEnv(ParallelEnv):
         grid_size: int = 15,
         num_resources: int = 10,
         num_obstacles: int = 12,
+        resource_respawn_prob: float = 0.02,
+        max_resources: Optional[int] = None,
         max_steps: int = 200,
         view_size: int = 5,
         partial_observability: bool = True,
@@ -43,6 +45,8 @@ class GridWorldEnv(ParallelEnv):
             grid_size: Size of the square grid (default: 15)
             num_resources: Number of resources to spawn (default: 10)
             num_obstacles: Number of obstacle cells to place (default: 12)
+            resource_respawn_prob: Per-step probability of spawning one resource
+            max_resources: Maximum active resources allowed at once
             max_steps: Maximum steps per episode (default: 200)
             view_size: Side length of the local observation window (default: 5)
             partial_observability: If True, return a local view per agent; if False,
@@ -52,6 +56,8 @@ class GridWorldEnv(ParallelEnv):
         self.grid_size = grid_size
         self.num_resources = num_resources
         self.num_obstacles = num_obstacles
+        self.resource_respawn_prob = resource_respawn_prob
+        self.max_resources = max_resources if max_resources is not None else max(num_resources, 15)
         self.max_steps = max_steps
         self.view_size = view_size
         self.partial_observability = partial_observability
@@ -66,6 +72,7 @@ class GridWorldEnv(ParallelEnv):
         self.grid = None
         self.agent_positions = {}
         self.resource_positions = []
+        self.newly_spawned_resources = []
         self.obstacle_positions = []
         self.step_count = 0
 
@@ -145,6 +152,7 @@ class GridWorldEnv(ParallelEnv):
         # Place resources randomly
         self.resource_positions = []
         self.initial_resource_positions = []
+        self.newly_spawned_resources = []
         resource_count = 0
 
         while resource_count < self.num_resources:
@@ -226,6 +234,8 @@ class GridWorldEnv(ParallelEnv):
         # Increment step count
         self.step_count += 1
 
+        self._maybe_respawn_resource()
+
         # Check termination conditions
         terminations = {agent: False for agent in self.agents}
         truncations = {agent: False for agent in self.agents}
@@ -242,6 +252,24 @@ class GridWorldEnv(ParallelEnv):
         infos = {agent: {} for agent in self.agents}
 
         return observations, rewards, terminations, truncations, infos
+
+    def _maybe_respawn_resource(self) -> None:
+        """Spawn at most one new resource with a small per-step probability."""
+        self.newly_spawned_resources = []
+
+        if len(self.resource_positions) >= self.max_resources:
+            return
+        if np.random.random() >= self.resource_respawn_prob:
+            return
+
+        try:
+            pos = self._sample_empty_arena_cell(exclude=set(self.agent_positions.values()))
+        except RuntimeError:
+            return
+
+        self.grid[pos[0], pos[1]] = 1
+        self.resource_positions.append(pos)
+        self.newly_spawned_resources.append(pos)
 
     def _move_agent(self, pos: Tuple[int, int], action: int) -> Tuple[int, int]:
         """
