@@ -97,9 +97,10 @@ class LiveEpisodeRenderer:
         self.resource_collect_state: Dict[tuple[int, int], int] = {}
 
         plt.ion()
-        self.fig = plt.figure(figsize=(13.8, 6.6), facecolor="white")
-        self.fig.patch.set_facecolor("white")
-        gs = self.fig.add_gridspec(2, 3, width_ratios=[1.14, 0.52, 1.0], wspace=0.32, hspace=0.38)
+        self.fig = plt.figure(figsize=(14.2, 6.8), facecolor="#101722")
+        self.fig.patch.set_facecolor("#101722")
+        self._add_figure_background()
+        gs = self.fig.add_gridspec(2, 3, width_ratios=[1.14, 0.56, 1.0], wspace=0.42, hspace=0.46)
         self.ax_grid = self.fig.add_subplot(gs[:, 0])
         self.ax_hud = self.fig.add_subplot(gs[:, 1])
         self.ax_plot = self.fig.add_subplot(gs[0, 2])
@@ -457,8 +458,20 @@ class LiveEpisodeRenderer:
         ppo_handles = [self.policy_line, self.entropy_line]
         self.ax_ppo.legend(ppo_handles, [line.get_label() for line in ppo_handles], loc="upper right")
 
-        self.fig.subplots_adjust(bottom=0.18)
+        self.fig.subplots_adjust(left=0.035, right=0.975, top=0.92, bottom=0.19)
         self._update_environment(initial_grid)
+
+    def _add_figure_background(self) -> None:
+        bg_axis = self.fig.add_axes([0, 0, 1, 1], zorder=-10)
+        bg_axis.set_axis_off()
+        x_grad = np.linspace(0.0, 1.0, 320)
+        y_grad = np.linspace(0.0, 1.0, 180)
+        gradient = np.outer(y_grad, x_grad)
+        base = np.zeros((180, 320, 3))
+        base[..., 0] = 0.055 + 0.025 * gradient
+        base[..., 1] = 0.080 + 0.030 * gradient
+        base[..., 2] = 0.120 + 0.045 * gradient
+        bg_axis.imshow(base, aspect="auto", extent=(0, 1, 0, 1), origin="lower")
 
     def _style_ui_axis(self, axis, title: str) -> None:
         axis.set_facecolor("white")
@@ -483,24 +496,41 @@ class LiveEpisodeRenderer:
             0.97,
             "Arena HUD",
             color="#f3f4f6",
-            fontsize=12.5,
+            fontsize=13.0,
             fontweight="bold",
             va="top",
         )
         self.ax_hud.add_patch(
-            Rectangle((0.06, 0.89), 0.88, 0.0018, facecolor="#334155", edgecolor="none", alpha=0.9)
+            Rectangle((0.06, 0.905), 0.88, 0.0018, facecolor="#334155", edgecolor="none", alpha=0.9)
         )
 
+        self.ax_hud.add_patch(
+            Rectangle(
+                (0.06, 0.68),
+                0.88,
+                0.19,
+                facecolor="#111827",
+                edgecolor="#1f2937",
+                linewidth=1.0,
+                zorder=0.5,
+            )
+        )
+        self.hud_phase_text = self.ax_hud.text(
+            0.1, 0.845, "", color="#f8fafc", fontsize=9.8, fontweight="bold", va="top"
+        )
         self.hud_episode_text = self.ax_hud.text(
-            0.09, 0.85, "", color="#cbd5e1", fontsize=10.0, va="top", linespacing=1.45
+            0.1, 0.795, "", color="#cbd5e1", fontsize=8.6, va="top"
+        )
+        self.hud_step_text = self.ax_hud.text(
+            0.1, 0.75, "", color="#cbd5e1", fontsize=8.6, va="top"
         )
         self.hud_reward_text = self.ax_hud.text(
-            0.09, 0.765, "", color="#cbd5e1", fontsize=9.6, va="top"
+            0.1, 0.705, "", color="#cbd5e1", fontsize=8.6, va="top"
         )
 
         card_specs = {
-            "agent_0": {"y": 0.42, "accent": self.arena_palette["agent_0"], "edge": self.arena_palette["agent_0_edge"], "title": "Agent 0"},
-            "agent_1": {"y": 0.08, "accent": self.arena_palette["agent_1"], "edge": self.arena_palette["agent_1_edge"], "title": "Agent 1"},
+            "agent_0": {"y": 0.38, "accent": self.arena_palette["agent_0"], "edge": self.arena_palette["agent_0_edge"], "title": "Agent 0"},
+            "agent_1": {"y": 0.07, "accent": self.arena_palette["agent_1"], "edge": self.arena_palette["agent_1_edge"], "title": "Agent 1"},
         }
         self.hud_agent_text = {}
         for agent_id, spec in card_specs.items():
@@ -508,7 +538,7 @@ class LiveEpisodeRenderer:
                 Rectangle(
                     (0.06, spec["y"]),
                     0.88,
-                    0.3,
+                    0.27,
                     facecolor="#111827",
                     edgecolor="#1f2937",
                     linewidth=1.1,
@@ -519,7 +549,7 @@ class LiveEpisodeRenderer:
                 Rectangle(
                     (0.06, spec["y"]),
                     0.018,
-                    0.3,
+                    0.27,
                     facecolor=spec["accent"],
                     edgecolor="none",
                     zorder=0.6,
@@ -527,26 +557,28 @@ class LiveEpisodeRenderer:
             )
             self.ax_hud.text(
                 0.1,
-                spec["y"] + 0.265,
+                spec["y"] + 0.235,
                 spec["title"],
                 color=spec["accent"],
-                fontsize=10.8,
+                fontsize=10.2,
                 fontweight="bold",
                 va="top",
             )
             self.hud_agent_text[agent_id] = self.ax_hud.text(
                 0.1,
-                spec["y"] + 0.22,
+                spec["y"] + 0.19,
                 "",
                 color="#e5e7eb",
-                fontsize=8.8,
+                fontsize=7.6,
                 va="top",
-                linespacing=1.5,
+                linespacing=1.38,
             )
 
     def update_hud(self, hud_state: Optional[Dict[str, object]]) -> None:
         if hud_state is None:
+            self.hud_phase_text.set_text("")
             self.hud_episode_text.set_text("")
+            self.hud_step_text.set_text("")
             self.hud_reward_text.set_text("")
             for text in self.hud_agent_text.values():
                 text.set_text("")
@@ -557,10 +589,10 @@ class LiveEpisodeRenderer:
         step = hud_state.get("step", 0)
         phase = hud_state.get("phase", "Training")
         episode_reward = float(hud_state.get("episode_reward", 0.0))
-        self.hud_episode_text.set_text(
-            f"{phase}\nEpisode {episode}/{total_episodes}\nStep {step}"
-        )
-        self.hud_reward_text.set_text(f"Episode Reward: {episode_reward:.2f}")
+        self.hud_phase_text.set_text(str(phase).upper())
+        self.hud_episode_text.set_text(f"Episode: {episode}/{total_episodes}")
+        self.hud_step_text.set_text(f"Step: {step}")
+        self.hud_reward_text.set_text(f"Episode reward: {episode_reward:.2f}")
 
         agent_states = hud_state.get("agents", {})
         for agent_id in ["agent_0", "agent_1"]:
@@ -917,6 +949,19 @@ class LiveEpisodeRenderer:
             self.communication_pulses[agent_value].set_visible(False)
             self.communication_text[agent_value].set_visible(False)
 
+    def reset_playback_visual_state(self, grid: np.ndarray) -> None:
+        self.reset_communication_visuals()
+        self.resource_spawn_state.clear()
+        self.resource_collect_state.clear()
+        self.previous_resource_positions = {tuple(pos) for pos in np.argwhere(grid == 1)}
+        for agent_value in self.agent_trails:
+            self.agent_trails[agent_value].clear()
+            positions = np.argwhere(grid == agent_value)
+            if len(positions):
+                row, col = positions[0]
+                self.agent_trails[agent_value].append((int(row), int(col)))
+            self._update_trail_patches(agent_value)
+
     def _build_signal_curve(
         self,
         sender_pos: tuple[float, float],
@@ -991,11 +1036,33 @@ class LiveEpisodeRenderer:
 
     def set_speed_delay(self, delay: float) -> None:
         self.speed_delay = float(np.clip(delay, 0.0001, 0.1))
+        self._update_speed_status_label()
 
     def set_speed_preset(self, delay: float) -> None:
         self.set_speed_delay(delay)
         if hasattr(self, "live_speed_slider"):
             self.live_speed_slider.set_val(self.speed_delay)
+
+    def attach_speed_status_label(self, mode_label: str) -> None:
+        self.speed_status_mode = mode_label
+        if not hasattr(self, "speed_status_text"):
+            self.speed_status_text = self.fig.text(
+                0.835,
+                0.025,
+                "",
+                ha="left",
+                va="center",
+                fontsize=8.5,
+                color="#e5e7eb",
+                bbox=dict(facecolor="#0f172a", edgecolor="#334155", boxstyle="round,pad=0.28", alpha=0.9),
+            )
+        self._update_speed_status_label()
+
+    def _update_speed_status_label(self) -> None:
+        if not hasattr(self, "speed_status_text"):
+            return
+        mode_label = getattr(self, "speed_status_mode", "Playback")
+        self.speed_status_text.set_text(f"{mode_label} delay: {self.speed_delay:.4f}s/frame")
 
     def setup_live_speed_controls(self, initial_delay: float) -> None:
         self.set_speed_delay(initial_delay)
@@ -1011,6 +1078,7 @@ class LiveEpisodeRenderer:
             valfmt="%.4f",
         )
         self.live_speed_slider.on_changed(self.set_speed_delay)
+        self.attach_speed_status_label("Live")
 
         preset_specs = [
             ("Slow", [0.58, 0.045, 0.07, 0.045], 0.1),
@@ -1036,7 +1104,7 @@ class PlaybackController:
     def __init__(
         self,
         renderer: LiveEpisodeRenderer,
-        history: List[List[np.ndarray]],
+        history: List[List[Dict[str, object]]],
         summaries: List[Dict],
     ):
         self.renderer = renderer
@@ -1085,6 +1153,7 @@ class PlaybackController:
             valfmt="%.4f",
         )
         self.speed_slider.on_changed(self.renderer.set_speed_delay)
+        self.renderer.attach_speed_status_label("Playback")
 
         self.episode_slider.on_changed(self._on_episode_slider)
         self.step_slider.on_changed(self._on_step_slider)
@@ -1151,26 +1220,47 @@ class PlaybackController:
         self.updating_sliders = False
 
     def _show_frame(self) -> None:
-        grid = self.history[self.current_episode][self.current_step]
-        hud_state = self._build_playback_hud_state(grid)
+        frame = self._current_frame()
+        grid = self._frame_grid(frame)
+        self.renderer.reset_playback_visual_state(grid)
+        hud_state = self._build_playback_hud_state(frame)
         self.renderer.update(
             grid,
-            self.current_episode + 1,
+            int(frame.get("episode", self.current_episode + 1)),
             len(self.history),
-            self.current_step,
-            0.001,
+            int(frame.get("step", self.current_step)),
+            self.renderer.get_speed_delay(0.001),
             actions=None,
             communication_events=None,
             hud_state=hud_state,
         )
 
-    def _build_playback_hud_state(self, grid: np.ndarray) -> Dict[str, object]:
+    def _current_frame(self) -> Dict[str, object]:
+        frame = self.history[self.current_episode][self.current_step]
+        if isinstance(frame, np.ndarray):
+            return {
+                "episode": self.current_episode + 1,
+                "step": self.current_step,
+                "grid": frame,
+                "agent_positions": {},
+                "resource_positions": [],
+            }
+        return frame
+
+    def _frame_grid(self, frame: Dict[str, object]) -> np.ndarray:
+        return np.asarray(frame["grid"])
+
+    def _build_playback_hud_state(self, frame: Dict[str, object]) -> Dict[str, object]:
+        grid = self._frame_grid(frame)
         summary = self.summaries[self.current_episode] if self.current_episode < len(self.summaries) else {}
         resources_collected = summary.get("resources_collected", {})
+        recorded_positions = frame.get("agent_positions", {})
         agents_state = {}
         for agent_id, agent_value in {"agent_0": 2, "agent_1": 3}.items():
             positions = np.argwhere(grid == agent_value)
-            position = tuple(map(int, positions[0])) if len(positions) else ("-", "-")
+            position = recorded_positions.get(agent_id)
+            if position is None:
+                position = tuple(map(int, positions[0])) if len(positions) else ("-", "-")
             agents_state[agent_id] = {
                 "resources": resources_collected.get(agent_id, 0),
                 "cumulative_resources": resources_collected.get(agent_id, 0),
@@ -1183,9 +1273,9 @@ class PlaybackController:
 
         return {
             "phase": "Playback",
-            "episode": self.current_episode + 1,
+            "episode": int(frame.get("episode", self.current_episode + 1)),
             "total_episodes": len(self.history),
-            "step": self.current_step,
+            "step": int(frame.get("step", self.current_step)),
             "episode_reward": float(summary.get("total_reward", 0.0)),
             "agents": agents_state,
         }
@@ -1255,6 +1345,10 @@ def run_live_training(
     """
     Run many PPO episodes with a persistent live renderer window.
     """
+    mode = mode.lower().strip()
+    if mode not in {"live", "playback"}:
+        raise ValueError("mode must be 'live' or 'playback'")
+
     env = GridWorldEnv(grid_size=grid_size, num_resources=num_resources, max_steps=max_steps)
     max_possible_reward = float(num_resources * len(env.agents))
 
@@ -1280,7 +1374,7 @@ def run_live_training(
         renderer.setup_live_speed_controls(render_delay)
 
     episode_summaries: List[Dict] = []
-    history: List[List[np.ndarray]] = []
+    history: List[List[Dict[str, object]]] = []
     recent_rewards: List[float] = []
     recent_resources: List[int] = []
     cumulative_resources_run = {
@@ -1353,9 +1447,26 @@ def run_live_training(
             }
 
         raw_obs, _ = env.reset(seed=episode_seed)
-        episode_history: List[np.ndarray] = []
+        episode_history: List[Dict[str, object]] = []
+
+        def build_history_frame(step_idx: int) -> Dict[str, object]:
+            grid_snapshot = env.grid.copy()
+            return {
+                "episode": episode_label,
+                "step": step_idx,
+                "grid": grid_snapshot,
+                "agent_positions": {
+                    agent_id: tuple(map(int, position))
+                    for agent_id, position in env.agent_positions.items()
+                },
+                "resource_positions": [
+                    tuple(map(int, position))
+                    for position in np.argwhere(grid_snapshot == 1)
+                ],
+            }
+
         if record_history:
-            episode_history.append(env.grid.copy())
+            episode_history.append(build_history_frame(0))
 
         comm_layer: Optional[CommunicationLayer] = None
         if use_communication:
@@ -1400,7 +1511,7 @@ def run_live_training(
 
             raw_next_obs, raw_rewards, terminations, truncations, _ = env.step(actions)
             if record_history:
-                episode_history.append(env.grid.copy())
+                episode_history.append(build_history_frame(step + 1))
 
             for agent_id, reward in raw_rewards.items():
                 if reward > 0.0:
