@@ -301,7 +301,7 @@ def run_live_comparison(
             "policy_resources": episode_policy_resources,
         }
         rows.append(row)
-        renderer.update_learning_plot(episode_reward, sum(resources.values()))
+        renderer.update_learning_plot(episode_reward, sum(resources.values()), resources)
         renderer.refresh(render_delay)
         print(
             f"Episode {episode + 1}/{num_episodes}: "

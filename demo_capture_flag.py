@@ -317,7 +317,7 @@ def run_capture_flag_demo(
         summaries.append(summary)
         renderer_for_plot = renderer
         if renderer_for_plot is not None:
-            renderer_for_plot.update_learning_plot(total_reward, 1 if winner else 0)
+            renderer_for_plot.update_learning_plot(total_reward, 1 if winner else 0, wins)
             renderer_for_plot.refresh(render_delay)
 
         print(

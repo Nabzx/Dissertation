@@ -117,21 +117,37 @@ class LiveEpisodeRenderer:
         self.resource_collect_state: Dict[tuple[int, int], int] = {}
 
         plt.ion()
-        self.fig = plt.figure(figsize=(14.2, 6.8), facecolor="#101722")
-        self.fig.patch.set_facecolor("#101722")
+        self.figure_bg = "#f5f0e6"
+        self.fig = plt.figure(figsize=(18.0, 8.4), facecolor=self.figure_bg)
+        self.fig.patch.set_facecolor(self.figure_bg)
         self._add_figure_background()
-        gs = self.fig.add_gridspec(2, 3, width_ratios=[1.14, 0.56, 1.0], wspace=0.42, hspace=0.46)
+        gs = self.fig.add_gridspec(
+            2,
+            4,
+            width_ratios=[1.12, 0.62, 1.0, 1.0],
+            wspace=0.42,
+            hspace=0.46,
+        )
         self.ax_grid = self.fig.add_subplot(gs[:, 0])
         self.ax_hud = self.fig.add_subplot(gs[:, 1])
         self.ax_plot = self.fig.add_subplot(gs[0, 2])
-        self.ax_ppo = self.fig.add_subplot(gs[1, 2])
+        self.ax_ppo = self.fig.add_subplot(gs[0, 3])
+        self.ax_opt = self.fig.add_subplot(gs[1, 2])
+        self.ax_coop = self.fig.add_subplot(gs[1, 3])
 
         rows, cols = initial_grid.shape
         self.grid_rows = rows
         self.grid_cols = cols
         self.octagon_vertices = build_octagon_vertices(rows, cols)
         self.arena_mask = compute_octagon_mask(rows, cols)
-        self.ax_grid.set_title("Environment")
+        self.ax_grid.set_title(
+            "Environment",
+            color="#f8fafc",
+            fontsize=14,
+            fontweight="bold",
+            pad=14,
+            loc="center",
+        )
         self.ax_grid.set_facecolor(self.arena_palette["void"])
         self.ax_grid.set_xlim(0, cols)
         self.ax_grid.set_ylim(rows, 0)
@@ -415,14 +431,11 @@ class LiveEpisodeRenderer:
                 self.ax_grid.add_patch(trail_patch)
 
         legend_handles = [
-            Line2D([0], [0], marker="o", color="none", markerfacecolor=self._agent_color(agent_value), markeredgecolor=self._agent_edge_color(agent_value), markersize=9, label=self.agent_labels[agent_value])
-            for agent_value in self.agent_values
-        ]
-        legend_handles.extend([
+            Line2D([0], [0], marker="o", color="none", markerfacecolor=self._agent_color(self.agent_values[0]), markeredgecolor=self._agent_edge_color(self.agent_values[0]), markersize=9, label="Agent"),
             Line2D([0], [0], marker="o", color="none", markerfacecolor=self.arena_palette["resource"], markeredgecolor=self.arena_palette["resource_edge"], markersize=7, label="Resource"),
             Line2D([0], [0], marker="^", color="none", markerfacecolor="#facc15", markeredgecolor="#fde68a", markersize=9, label="Flag"),
             Rectangle((0, 0), 1, 1, facecolor=self.arena_palette["obstacle"], edgecolor=self.arena_palette["obstacle_edge"], label="Obstacle"),
-        ])
+        ]
         self.ax_grid.legend(
             handles=legend_handles,
             loc="upper center",
@@ -450,27 +463,30 @@ class LiveEpisodeRenderer:
         self.policy_losses: List[float] = []
         self.value_losses: List[float] = []
         self.entropy_values: List[float] = []
-        self.reward_line, = self.ax_plot.plot([], [], color="tab:blue", linewidth=2, label="Reward Avg (50)")
+        self.gradient_norms: List[float] = []
+        self.fairness_values: List[float] = []
+        self.balance_values: List[float] = []
+        self.reward_line, = self.ax_plot.plot([], [], color="#2563eb", linewidth=2.2, label="Reward Avg (50)")
         self.resource_line, = self.ax_plot.plot(
             [],
             [],
-            color="tab:green",
-            linewidth=2,
+            color="#16a34a",
+            linewidth=2.2,
             label="Resources Avg (50)",
         )
         self.ax_plot.set_xlim(0, max(1, num_episodes))
         self.ax_plot.set_ylim(0, max(1.0, max_possible_reward))
         self._style_ui_axis(self.ax_plot, "Learning Progress")
         self.ax_plot.set_xlabel("Episode")
-        self.ax_plot.set_ylabel("Smoothed Value")
-        self.ax_plot.grid(True, color="#d1d5db", alpha=0.65, linewidth=0.8)
-        self.ax_plot.legend(loc="upper left")
+        self.ax_plot.set_ylabel("Smoothed Reward / Resources")
+        self.ax_plot.grid(True, color="#e5e7eb", alpha=0.9, linewidth=0.8)
+        self.ax_plot.legend(loc="upper left", frameon=False, fontsize=9)
 
         self.policy_line, = self.ax_ppo.plot(
             [],
             [],
-            color="tab:red",
-            linewidth=2,
+            color="#dc2626",
+            linewidth=2.2,
             label="Policy Loss (PPO)",
         )
         self.ax_entropy = self.ax_ppo.twinx()
@@ -478,25 +494,69 @@ class LiveEpisodeRenderer:
         self.entropy_line, = self.ax_entropy.plot(
             [],
             [],
-            color="tab:purple",
-            linewidth=2,
+            color="#7c3aed",
+            linewidth=2.2,
             label="Entropy (Exploration)",
         )
         self.ax_ppo.set_xlim(0, max(1, num_episodes))
         self._style_ui_axis(self.ax_ppo, "PPO Training Dynamics")
         self.ax_ppo.set_xlabel("Episode")
-        self.ax_ppo.set_ylabel("Policy Loss (PPO)", color="tab:red")
-        self.ax_ppo.tick_params(axis="y", labelcolor="tab:red")
-        self.ax_ppo.grid(True, color="#d1d5db", alpha=0.65, linewidth=0.8)
-        self.ax_entropy.set_ylabel("Entropy (Exploration)", color="tab:purple")
-        self.ax_entropy.tick_params(axis="y", labelcolor="tab:purple")
+        self.ax_ppo.set_ylabel("Policy Loss", color="#dc2626")
+        self.ax_ppo.tick_params(axis="y", labelcolor="#dc2626")
+        self.ax_ppo.grid(True, color="#e5e7eb", alpha=0.9, linewidth=0.8)
+        self.ax_entropy.set_ylabel("Entropy", color="#7c3aed")
+        self.ax_entropy.tick_params(axis="y", labelcolor="#7c3aed")
         self.ax_ppo.set_ylim(-1.0, 2.0)
         self.ax_entropy.set_ylim(0.0, 2.0)
         self.ax_entropy.spines["right"].set_color("#9ca3af")
         ppo_handles = [self.policy_line, self.entropy_line]
-        self.ax_ppo.legend(ppo_handles, [line.get_label() for line in ppo_handles], loc="upper right")
+        self.ax_ppo.legend(ppo_handles, [line.get_label() for line in ppo_handles], loc="upper right", frameon=False, fontsize=9)
 
-        self.fig.subplots_adjust(left=0.035, right=0.975, top=0.92, bottom=0.19)
+        self.value_line, = self.ax_opt.plot(
+            [],
+            [],
+            color="#ea580c",
+            linewidth=2.2,
+            label="Value Loss Avg (50)",
+        )
+        self.grad_line, = self.ax_opt.plot(
+            [],
+            [],
+            color="#0891b2",
+            linewidth=2.0,
+            linestyle="--",
+            label="Grad Norm Avg (50)",
+        )
+        self.ax_opt.set_xlim(0, max(1, num_episodes))
+        self._style_ui_axis(self.ax_opt, "PPO Optimization Signals")
+        self.ax_opt.set_xlabel("Episode")
+        self.ax_opt.set_ylabel("Loss Value")
+        self.ax_opt.grid(True, color="#e5e7eb", alpha=0.9, linewidth=0.8)
+        self.ax_opt.legend(loc="upper right", frameon=False, fontsize=9)
+
+        self.fairness_line, = self.ax_coop.plot(
+            [],
+            [],
+            color="#0f766e",
+            linewidth=2.2,
+            label="Jain Fairness Avg (50)",
+        )
+        self.balance_line, = self.ax_coop.plot(
+            [],
+            [],
+            color="#9333ea",
+            linewidth=2.0,
+            label="Resource Balance Avg (50)",
+        )
+        self.ax_coop.set_xlim(0, max(1, num_episodes))
+        self.ax_coop.set_ylim(0.0, 1.05)
+        self._style_ui_axis(self.ax_coop, "Cooperation & Fairness")
+        self.ax_coop.set_xlabel("Episode")
+        self.ax_coop.set_ylabel("Metric Value")
+        self.ax_coop.grid(True, color="#e5e7eb", alpha=0.9, linewidth=0.8)
+        self.ax_coop.legend(loc="lower right", frameon=False, fontsize=9)
+
+        self.fig.subplots_adjust(left=0.035, right=0.985, top=0.91, bottom=0.18)
         self._update_environment(initial_grid)
 
     def _add_figure_background(self) -> None:
@@ -505,10 +565,11 @@ class LiveEpisodeRenderer:
         x_grad = np.linspace(0.0, 1.0, 320)
         y_grad = np.linspace(0.0, 1.0, 180)
         gradient = np.outer(y_grad, x_grad)
-        base = np.zeros((180, 320, 3))
-        base[..., 0] = 0.055 + 0.025 * gradient
-        base[..., 1] = 0.080 + 0.030 * gradient
-        base[..., 2] = 0.120 + 0.045 * gradient
+        base = np.ones((180, 320, 3))
+        warm = np.array([245, 240, 230], dtype=float) / 255.0
+        shadow = np.array([232, 222, 207], dtype=float) / 255.0
+        base[:] = warm
+        base = base * (1.0 - 0.38 * gradient[..., None]) + shadow * (0.38 * gradient[..., None])
         bg_axis.imshow(base, aspect="auto", extent=(0, 1, 0, 1), origin="lower")
 
     def _agent_index(self, agent_value: int) -> int:
@@ -534,12 +595,14 @@ class LiveEpisodeRenderer:
 
     def _style_ui_axis(self, axis, title: str) -> None:
         axis.set_facecolor("white")
-        axis.set_title(title, color="#111827")
-        axis.tick_params(colors="#111827")
+        axis.set_title(title, color="#111827", fontsize=11.5, fontweight="bold", pad=9)
+        axis.tick_params(colors="#374151", labelsize=8.5)
         axis.xaxis.label.set_color("#111827")
         axis.yaxis.label.set_color("#111827")
+        axis.xaxis.label.set_size(9.5)
+        axis.yaxis.label.set_size(9.5)
         for spine in axis.spines.values():
-            spine.set_color("#9ca3af")
+            spine.set_color("#d1d5db")
 
     def _setup_hud_axis(self) -> None:
         self.ax_hud.set_facecolor("#0b1016")
@@ -555,7 +618,7 @@ class LiveEpisodeRenderer:
             0.97,
             "Arena HUD",
             color="#f3f4f6",
-            fontsize=13.0,
+            fontsize=13.5,
             fontweight="bold",
             va="top",
         )
@@ -565,9 +628,9 @@ class LiveEpisodeRenderer:
 
         self.ax_hud.add_patch(
             Rectangle(
-                (0.06, 0.68),
+                (0.06, 0.70),
                 0.88,
-                0.19,
+                0.17,
                 facecolor="#111827",
                 edgecolor="#1f2937",
                 linewidth=1.0,
@@ -575,24 +638,24 @@ class LiveEpisodeRenderer:
             )
         )
         self.hud_phase_text = self.ax_hud.text(
-            0.1, 0.845, "", color="#f8fafc", fontsize=9.8, fontweight="bold", va="top"
+            0.1, 0.845, "", color="#f8fafc", fontsize=9.4, fontweight="bold", va="top"
         )
         self.hud_episode_text = self.ax_hud.text(
-            0.1, 0.795, "", color="#cbd5e1", fontsize=8.6, va="top"
+            0.1, 0.798, "", color="#cbd5e1", fontsize=8.2, va="top"
         )
         self.hud_step_text = self.ax_hud.text(
-            0.1, 0.75, "", color="#cbd5e1", fontsize=8.6, va="top"
+            0.1, 0.758, "", color="#cbd5e1", fontsize=8.2, va="top"
         )
         self.hud_reward_text = self.ax_hud.text(
-            0.1, 0.705, "", color="#cbd5e1", fontsize=8.6, va="top"
+            0.1, 0.718, "", color="#cbd5e1", fontsize=8.2, va="top"
         )
 
         self.hud_agent_text = {}
         card_count = max(1, len(self.agent_values))
-        top = 0.64
-        bottom = 0.05
-        gap = 0.018
-        card_height = max(0.105, min(0.19, (top - bottom - gap * (card_count - 1)) / card_count))
+        top = 0.665
+        bottom = 0.035
+        gap = 0.016
+        card_height = max(0.112, min(0.152, (top - bottom - gap * (card_count - 1)) / card_count))
         for idx, agent_value in enumerate(self.agent_values):
             agent_id = self._agent_id(agent_value)
             y = top - (idx + 1) * card_height - idx * gap
@@ -620,21 +683,21 @@ class LiveEpisodeRenderer:
             )
             self.ax_hud.text(
                 0.1,
-                y + card_height - 0.03,
+                y + card_height - 0.026,
                 f"Agent {idx}",
                 color=accent,
-                fontsize=9.4,
+                fontsize=8.9,
                 fontweight="bold",
                 va="top",
             )
             self.hud_agent_text[agent_id] = self.ax_hud.text(
                 0.1,
-                y + card_height - 0.068,
+                y + card_height - 0.057,
                 "",
                 color="#e5e7eb",
-                fontsize=6.8 if card_count > 2 else 7.6,
+                fontsize=6.3 if card_count > 2 else 7.2,
                 va="top",
-                linespacing=1.25,
+                linespacing=1.18,
             )
 
     def update_hud(self, hud_state: Optional[Dict[str, object]]) -> None:
@@ -681,12 +744,12 @@ class LiveEpisodeRenderer:
             action = info.get("recent_action", "n/a")
             lines = [
                 f"Type: {agent_type}",
-                f"Resources: {resources} (run {cumulative})",
-                f"Position: {position}",
-                f"Action: {action}",
+                f"Res: {resources} | Run: {cumulative}",
+                f"Pos: {position}",
+                f"Act: {action}",
             ]
             if agent_id in distances:
-                lines.append(f"Flag distance: {distances[agent_id]}")
+                lines.append(f"Flag dist: {distances[agent_id]}")
             if agent_id in wins:
                 lines.append(f"Wins: {wins[agent_id]}")
             self.hud_agent_text[agent_id].set_text("\n".join(lines))
@@ -1110,9 +1173,15 @@ class LiveEpisodeRenderer:
         curve_y = (1 - t) ** 2 * sy + 2 * (1 - t) * t * control_y + t**2 * ry
         return curve_x, curve_y
 
-    def update_learning_plot(self, total_reward: float, total_resources: float) -> None:
+    def update_learning_plot(
+        self,
+        total_reward: float,
+        total_resources: float,
+        per_agent_resources: Optional[Dict[str, float]] = None,
+    ) -> None:
         self.episode_rewards.append(float(total_reward))
         self.episode_resources.append(float(total_resources))
+        self._append_cooperation_metrics(per_agent_resources)
         if len(self.episode_rewards) % self.plot_update_every != 0:
             return
 
@@ -1126,30 +1195,81 @@ class LiveEpisodeRenderer:
 
         self.reward_line.set_data(plot_x, plot_reward)
         self.resource_line.set_data(plot_x, plot_resources)
+        self._update_cooperation_lines(x_vals)
 
-    def update_ppo_plot(self, ppo_metrics: Dict[str, float]) -> None:
+    def update_ppo_plot(self, ppo_metrics: Optional[Dict[str, float]]) -> None:
+        if not ppo_metrics:
+            ppo_metrics = {}
         self.policy_losses.append(float(ppo_metrics.get("policy_loss", 0.0)))
         self.value_losses.append(float(ppo_metrics.get("value_loss", 0.0)))
         self.entropy_values.append(float(ppo_metrics.get("entropy", 0.0)))
+        self.gradient_norms.append(float(ppo_metrics.get("grad_norm", ppo_metrics.get("gradient_norm", np.nan))))
         if len(self.policy_losses) % self.plot_update_every != 0:
             return
 
         x_vals = list(range(len(self.policy_losses)))
         policy_smoothed = self._moving_average(self.policy_losses, self.smoothing_window)
         entropy_smoothed = self._moving_average(self.entropy_values, self.smoothing_window)
+        value_smoothed = self._moving_average(self.value_losses, self.smoothing_window)
+        grad_smoothed = self._moving_average_ignore_nan(self.gradient_norms, self.smoothing_window)
 
         plot_x = x_vals[:: self.plot_downsample] or x_vals[-1:]
         plot_policy = policy_smoothed[:: self.plot_downsample] or policy_smoothed[-1:]
         plot_entropy = entropy_smoothed[:: self.plot_downsample] or entropy_smoothed[-1:]
+        plot_value = value_smoothed[:: self.plot_downsample] or value_smoothed[-1:]
+        plot_grad = grad_smoothed[:: self.plot_downsample] or grad_smoothed[-1:]
 
         self.policy_line.set_data(plot_x, plot_policy)
         self.entropy_line.set_data(plot_x, plot_entropy)
+        self.value_line.set_data(plot_x, plot_value)
+        self.grad_line.set_data(plot_x, plot_grad)
+        self.ax_opt.relim()
+        self.ax_opt.autoscale_view(scalex=False, scaley=True)
+
+    def _append_cooperation_metrics(self, per_agent_resources: Optional[Dict[str, float]]) -> None:
+        if not per_agent_resources:
+            self.fairness_values.append(np.nan)
+            self.balance_values.append(np.nan)
+            return
+
+        values = np.array(list(per_agent_resources.values()), dtype=float)
+        total = float(np.sum(values))
+        squared_sum = float(np.sum(values**2))
+        if len(values) == 0 or squared_sum <= 0.0:
+            fairness = np.nan
+            balance = np.nan
+        else:
+            fairness = float((total**2) / (len(values) * squared_sum))
+            balance = float(1.0 - ((np.max(values) - np.min(values)) / max(total, 1.0)))
+            balance = float(np.clip(balance, 0.0, 1.0))
+
+        self.fairness_values.append(fairness)
+        self.balance_values.append(balance)
+
+    def _update_cooperation_lines(self, x_vals: List[int]) -> None:
+        fairness_smoothed = self._moving_average_ignore_nan(self.fairness_values, self.smoothing_window)
+        balance_smoothed = self._moving_average_ignore_nan(self.balance_values, self.smoothing_window)
+
+        plot_x = x_vals[:: self.plot_downsample] or x_vals[-1:]
+        plot_fairness = fairness_smoothed[:: self.plot_downsample] or fairness_smoothed[-1:]
+        plot_balance = balance_smoothed[:: self.plot_downsample] or balance_smoothed[-1:]
+
+        self.fairness_line.set_data(plot_x, plot_fairness)
+        self.balance_line.set_data(plot_x, plot_balance)
 
     def _moving_average(self, values: List[float], window: int) -> List[float]:
         return [
             float(np.mean(values[max(0, idx - window + 1) : idx + 1]))
             for idx in range(len(values))
         ]
+
+    def _moving_average_ignore_nan(self, values: List[float], window: int) -> List[float]:
+        smoothed: List[float] = []
+        for idx in range(len(values)):
+            window_values = np.array(values[max(0, idx - window + 1) : idx + 1], dtype=float)
+            valid = window_values[~np.isnan(window_values)]
+            smoothed.append(float(np.mean(valid)) if len(valid) else np.nan)
+        return smoothed
 
     def refresh(self, render_delay: float) -> None:
         self.fig.canvas.draw_idle()
@@ -1762,7 +1882,7 @@ def run_live_training(
         history.append(episode_result["history"])
         recent_rewards.append(total_shaped_reward)
         recent_resources.append(total_resources)
-        renderer.update_learning_plot(total_shaped_reward, total_resources)
+        renderer.update_learning_plot(total_shaped_reward, total_resources, resources)
         renderer.update_ppo_plot(ppo_metrics)
         renderer.refresh(render_delay)
 
