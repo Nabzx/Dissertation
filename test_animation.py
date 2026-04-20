@@ -5,7 +5,7 @@ import numpy as np
 from env.gridworld_env import GridWorldEnv
 from testing.ppo_agent import PPOAgent
 from train.run_simulation import run_episode
-from visualize_episode import animate_episode
+from visualise_episode import animate_episode
 
 
 def run_animation_test(save_path: str | None = None):

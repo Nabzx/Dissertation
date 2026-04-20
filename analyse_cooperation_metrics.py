@@ -172,7 +172,7 @@ def write_csv(path: str, rows: List[Dict]) -> None:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Analyze multi-agent cooperation metrics.")
+    parser = argparse.ArgumentParser(description="Analyse multi-agent cooperation metrics.")
     parser.add_argument("--input", default="results/headless_training_metrics_10000.json")
     parser.add_argument("--per-episode-csv", default="results/cooperation_metrics_10000.csv")
     parser.add_argument("--per-episode-json", default="results/cooperation_metrics_10000.json")
@@ -198,7 +198,7 @@ def main() -> None:
     write_json(args.per_episode_json, per_episode)
     write_json(args.summary_json, summary)
 
-    print(f"Analyzed {len(per_episode)} episodes")
+    print(f"Analysed {len(per_episode)} episodes")
     print(f"Saved per-episode CSV: {args.per_episode_csv}")
     print(f"Saved per-episode JSON: {args.per_episode_json}")
     print(f"Saved summary JSON: {args.summary_json}")

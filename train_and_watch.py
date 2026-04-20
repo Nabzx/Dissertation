@@ -8,7 +8,7 @@ from env.gridworld_env import GridWorldEnv
 from testing.communication import CommunicationLayer
 from testing.ppo_agent import PPOAgent
 from train.run_simulation import run_episode
-from visualize_episode import animate_episode
+from visualise_episode import animate_episode
 
 
 def train_and_watch(

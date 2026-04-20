@@ -518,7 +518,7 @@ class LiveEpisodeRenderer:
             label="Grad Norm Avg (50)",
         )
         self.ax_opt.set_xlim(0, max(1, num_episodes))
-        self._style_ui_axis(self.ax_opt, "PPO Optimization Signals")
+        self._style_ui_axis(self.ax_opt, "PPO Optimisation Signals")
         self.ax_opt.set_xlabel("Episode")
         self.ax_opt.set_ylabel("Loss Value")
         self.ax_opt.grid(True, color="#e5e7eb", alpha=0.9, linewidth=0.8)
