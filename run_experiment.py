@@ -1,11 +1,4 @@
-"""
-Configurable experiment runner for multi-agent simulations.
-
-Run different combinations of agent_type and reward_scheme without editing code.
-
-Example:
-    python run_experiment.py --agent_type ppo --reward_scheme mixed --num_episodes 20
-"""
+"""Command-line runner for gridworld experiments."""
 
 from __future__ import annotations
 

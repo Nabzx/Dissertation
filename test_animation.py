@@ -1,9 +1,4 @@
-"""
-Run one PPO episode and animate the resulting grid sequence.
-
-Usage:
-    python test_animation.py
-"""
+"""Run one PPO episode and animate the resulting grid sequence."""
 
 from __future__ import annotations
 
@@ -16,9 +11,7 @@ from visualize_episode import animate_episode
 
 
 def run_animation_test(save_path: str | None = None):
-    """
-    Run one episode with PPO settings and animate it.
-    """
+    """Run one PPO episode and return the captured grid sequence."""
     agent_type = "ppo"
     reward_scheme = "selfish"
     communication = False

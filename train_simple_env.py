@@ -1,10 +1,4 @@
-"""
-Train PPO in a simpler curriculum environment.
-
-The simple environment keeps the same observation/action shapes as the main
-arena, but reduces obstacle pressure and increases resource density so PPO can
-learn useful collection behaviour before evaluation in the harder arena.
-"""
+"""Train PPO in the easier curriculum arena."""
 
 from __future__ import annotations
 

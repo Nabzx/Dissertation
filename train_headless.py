@@ -1,10 +1,4 @@
-"""
-Headless PPO training pipeline with checkpointing.
-
-This script intentionally does not import or use the live renderer. It trains
-one persistent PPOAgent across many episodes, writes lightweight metrics, and
-saves checkpoints that can later be loaded by demo_trained_agent.py.
-"""
+"""Headless PPO training with checkpoints and per-episode metrics."""
 
 from __future__ import annotations
 
@@ -38,9 +32,7 @@ def train_headless(
     max_steps: int = 250,
     device: str = "cpu",
 ) -> List[Dict]:
-    """
-    Train PPO without rendering and periodically save model checkpoints.
-    """
+    """Train PPO without rendering and periodically save checkpoints."""
     if not TORCH_AVAILABLE:
         raise RuntimeError("Headless PPO training requires PyTorch.")
 
