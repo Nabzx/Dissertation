@@ -1,5 +1,3 @@
-"""Plotting and logging helpers for grid-world experiment outputs."""
-
 import os
 from typing import Dict, List, Optional, Tuple
 
@@ -9,31 +7,30 @@ import numpy as np
 
 
 def save_grid_screenshot(grid: np.ndarray, filename: str, title: Optional[str] = None):
-    """Save the final arena grid as a simple colour-coded image."""
     fig, ax = plt.subplots(figsize=(10, 10))
 
     agent_palette = [
-        [0.0, 0.0, 1.0],   # blue
-        [1.0, 0.0, 0.0],   # red
-        [1.0, 0.6, 0.0],   # orange
-        [0.5, 0.0, 0.9],   # purple
+        [0.0, 0.0, 1.0],
+        [1.0, 0.0, 0.0],
+        [1.0, 0.6, 0.0],
+        [0.5, 0.0, 0.9],
     ]
     obstacle_value = int(np.max(grid))
-    color_map = np.zeros((grid.shape[0], grid.shape[1], 3))
+    colour_grid = np.zeros((grid.shape[0], grid.shape[1], 3))
 
     for row in range(grid.shape[0]):
         for col in range(grid.shape[1]):
             cell_value = int(grid[row, col])
             if cell_value == 0:
-                color_map[row, col] = [1.0, 1.0, 1.0]
+                colour_grid[row, col] = [1.0, 1.0, 1.0]
             elif cell_value == 1:
-                color_map[row, col] = [0.0, 0.8, 0.0]
+                colour_grid[row, col] = [0.0, 0.8, 0.0]
             elif cell_value == obstacle_value and obstacle_value > 3:
-                color_map[row, col] = [0.3, 0.3, 0.3]
+                colour_grid[row, col] = [0.3, 0.3, 0.3]
             elif cell_value >= 2:
-                color_map[row, col] = agent_palette[(cell_value - 2) % len(agent_palette)]
+                colour_grid[row, col] = agent_palette[(cell_value - 2) % len(agent_palette)]
 
-    ax.imshow(color_map, origin="upper", interpolation="nearest")
+    ax.imshow(colour_grid, origin="upper", interpolation="nearest")
     ax.set_xticks(np.arange(-0.5, grid.shape[1], 1), minor=True)
     ax.set_yticks(np.arange(-0.5, grid.shape[0], 1), minor=True)
     ax.grid(which="minor", color="gray", linestyle="-", linewidth=0.5)
@@ -61,7 +58,6 @@ def save_grid_screenshot(grid: np.ndarray, filename: str, title: Optional[str] =
 
 
 def save_heatmap(heatmap: np.ndarray, filename: str, agent_name: str, title: Optional[str] = None):
-    """Save one agent's visit-count heatmap."""
     fig, ax = plt.subplots(figsize=(10, 10))
 
     im = ax.imshow(heatmap, cmap="YlOrRd", origin="upper", interpolation="nearest")
@@ -87,7 +83,6 @@ def save_heatmap(heatmap: np.ndarray, filename: str, agent_name: str, title: Opt
 
 
 def plot_resource_distribution(resources: List[Tuple[int, int]], filename: str, grid_size: int = 15):
-    """Plot where resources were spawned at the start of an episode."""
     fig, ax = plt.subplots(figsize=(10, 10))
 
     grid = np.zeros((grid_size, grid_size))
@@ -114,7 +109,6 @@ def plot_resource_distribution(resources: List[Tuple[int, int]], filename: str, 
 
 
 def save_movement_heatmap(heatmap: np.ndarray, filename: str, cmap: str = "hot"):
-    """Save an aggregated visit-count heatmap across episodes."""
     fig, ax = plt.subplots(figsize=(10, 10))
 
     im = ax.imshow(heatmap, cmap=cmap, origin="upper", interpolation="nearest")
@@ -137,11 +131,10 @@ def save_movement_heatmap(heatmap: np.ndarray, filename: str, cmap: str = "hot")
 
 
 def save_trajectory_plot(trajectories: Dict[str, List[Tuple[int, int]]], grid_size: int, filename: str):
-    """Plot each agent's path through the arena."""
     fig, ax = plt.subplots(figsize=(10, 10))
 
     palette = ["blue", "red", "orange", "purple", "green", "brown"]
-    agent_colors = {
+    agent_colours = {
         agent_id: palette[idx % len(palette)]
         for idx, agent_id in enumerate(sorted(trajectories.keys()))
     }
@@ -150,11 +143,11 @@ def save_trajectory_plot(trajectories: Dict[str, List[Tuple[int, int]]], grid_si
         if len(positions) == 0:
             continue
 
-        color = agent_colors.get(agent_id, "gray")
+        colour = agent_colours.get(agent_id, "gray")
         x_coords = [pos[1] for pos in positions]
         y_coords = [pos[0] for pos in positions]
 
-        ax.plot(x_coords, y_coords, color=color, alpha=0.6, linewidth=2, label=f"{agent_id}", zorder=1)
+        ax.plot(x_coords, y_coords, color=colour, alpha=0.6, linewidth=2, label=f"{agent_id}", zorder=1)
 
         arrow_step = max(1, len(positions) // 20)
         for i in range(0, len(positions) - 1, arrow_step):
@@ -168,8 +161,8 @@ def save_trajectory_plot(trajectories: Dict[str, List[Tuple[int, int]]], grid_si
                     dy * 0.7,
                     head_width=0.3,
                     head_length=0.3,
-                    fc=color,
-                    ec=color,
+                    fc=colour,
+                    ec=colour,
                     alpha=0.7,
                     zorder=2,
                 )
@@ -177,7 +170,7 @@ def save_trajectory_plot(trajectories: Dict[str, List[Tuple[int, int]]], grid_si
         ax.scatter(
             x_coords[0],
             y_coords[0],
-            color=color,
+            color=colour,
             s=200,
             marker="o",
             edgecolors="black",
@@ -190,7 +183,7 @@ def save_trajectory_plot(trajectories: Dict[str, List[Tuple[int, int]]], grid_si
             ax.scatter(
                 x_coords[-1],
                 y_coords[-1],
-                color=color,
+                color=colour,
                 s=200,
                 marker="s",
                 edgecolors="black",
@@ -222,10 +215,9 @@ def save_trajectory_plot(trajectories: Dict[str, List[Tuple[int, int]]], grid_si
 
 
 def save_reward_curve(reward_history: Dict[str, List[float]], filename: str):
-    """Plot per-agent episode reward curves."""
     fig, ax = plt.subplots(figsize=(12, 6))
 
-    agent_colors = {
+    agent_colours = {
         "agent_0": "blue",
         "agent_1": "red",
     }
@@ -234,10 +226,10 @@ def save_reward_curve(reward_history: Dict[str, List[float]], filename: str):
         if len(rewards) == 0:
             continue
 
-        color = agent_colors.get(agent_id, "gray")
+        colour = agent_colours.get(agent_id, "gray")
         episodes = list(range(1, len(rewards) + 1))
 
-        ax.plot(episodes, rewards, color=color, marker="o", linewidth=2, markersize=4, label=agent_id, alpha=0.8)
+        ax.plot(episodes, rewards, color=colour, marker="o", linewidth=2, markersize=4, label=agent_id, alpha=0.8)
 
     ax.set_xlabel("Episode", fontsize=12, fontweight="bold")
     ax.set_ylabel("Total Reward", fontsize=12, fontweight="bold")

@@ -1,5 +1,3 @@
-"""PettingZoo-style grid arena used by the multi-agent experiments."""
-
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
@@ -10,8 +8,6 @@ from env.arena import compute_octagon_mask, is_inside_arena
 
 
 class GridWorldEnv(ParallelEnv):
-    """Grid arena where agents move, avoid obstacles, and collect resources."""
-
     metadata = {
         "name": "gridworld_v0",
         "render_mode": ["human", "rgb_array"],
@@ -45,7 +41,6 @@ class GridWorldEnv(ParallelEnv):
         self.seed = seed
         self.arena_mask = compute_octagon_mask(grid_size, grid_size)
 
-        # 0 empty, 1 resource, 2..N agents, final value obstacle.
         self.resource_value = 1
         self.agent_value_start = 2
         self.obstacle_value = self.agent_value_start + self.n_agents
@@ -69,9 +64,9 @@ class GridWorldEnv(ParallelEnv):
 
         self.action_spaces = {agent: Discrete(5) for agent in self.agents}
 
-        obs_shape = (view_size, view_size) if partial_observability else (grid_size, grid_size)
+        obs_size = (view_size, view_size) if partial_observability else (grid_size, grid_size)
         self.observation_spaces = {
-            agent: Box(low=0, high=self.obstacle_value, shape=obs_shape, dtype=np.int32)
+            agent: Box(low=0, high=self.obstacle_value, shape=obs_size, dtype=np.int32)
             for agent in self.agents
         }
 
@@ -79,7 +74,6 @@ class GridWorldEnv(ParallelEnv):
             np.random.seed(seed)
 
     def reset(self, seed: Optional[int] = None, options: Optional[dict] = None):
-        """Reset the arena and return PettingZoo-style observations and infos."""
         if seed is not None:
             np.random.seed(seed)
             self.seed = seed
@@ -125,10 +119,9 @@ class GridWorldEnv(ParallelEnv):
             pos = self.agent_positions[agent]
             self.heatmaps[agent][pos[0], pos[1]] += 1
 
-        return self._get_observations(), {agent: {} for agent in self.agents}
+        return self._get_obs(), {agent: {} for agent in self.agents}
 
     def step(self, actions: Dict[str, int]):
-        """Move every agent once and return the usual parallel-env tuple."""
         for agent in self.agents:
             pos = self.agent_positions[agent]
             if self.is_agent_value(self.grid[pos[0], pos[1]]):
@@ -170,7 +163,7 @@ class GridWorldEnv(ParallelEnv):
             self.heatmaps[agent][pos[0], pos[1]] += 1
 
         self.step_count += 1
-        self._maybe_respawn_resource()
+        self._maybe_add_resource()
 
         terminations = {agent: False for agent in self.agents}
         truncations = {agent: False for agent in self.agents}
@@ -181,10 +174,9 @@ class GridWorldEnv(ParallelEnv):
         if self.step_count >= self.max_steps:
             truncations = {agent: True for agent in self.agents}
 
-        return self._get_observations(), rewards, terminations, truncations, {agent: {} for agent in self.agents}
+        return self._get_obs(), rewards, terminations, truncations, {agent: {} for agent in self.agents}
 
-    def _maybe_respawn_resource(self) -> None:
-        """Spawn at most one new resource with a small per-step probability."""
+    def _maybe_add_resource(self) -> None:
         self.newly_spawned_resources = []
 
         if len(self.resource_positions) >= self.max_resources:
@@ -202,7 +194,6 @@ class GridWorldEnv(ParallelEnv):
         self.newly_spawned_resources.append(pos)
 
     def _move_agent(self, pos: Tuple[int, int], action: int) -> Tuple[int, int]:
-        """Return the next cell for an action, or the old cell if blocked."""
         row, col = pos
 
         if action == 0:
@@ -224,25 +215,20 @@ class GridWorldEnv(ParallelEnv):
         return new_pos
 
     def agent_value(self, agent_id: str) -> int:
-        """Return the grid marker value for an agent id."""
         return self.agent_value_start + self.agents.index(agent_id)
 
     def agent_id_from_value(self, value: int) -> Optional[str]:
-        """Return the agent id for a grid marker, or None if not an agent."""
         if not self.is_agent_value(value):
             return None
         return self.agents[int(value) - self.agent_value_start]
 
     def is_agent_value(self, value: int) -> bool:
-        """Return True if a grid value represents any agent."""
         return self.agent_value_start <= int(value) < self.obstacle_value
 
     def is_inside_arena(self, x: int, y: int) -> bool:
-        """Return True if a cell is inside the physical octagon arena."""
         return is_inside_arena(self.arena_mask, x, y)
 
     def _sample_empty_arena_cell(self, exclude: Optional[set] = None) -> Tuple[int, int]:
-        """Sample an empty cell that is inside the octagon arena."""
         exclude = exclude or set()
         valid_cells = np.argwhere((self.grid == 0) & self.arena_mask)
         if len(valid_cells) == 0:
@@ -254,12 +240,11 @@ class GridWorldEnv(ParallelEnv):
             if pos not in exclude:
                 return pos
 
-    def _get_observations(self) -> Dict[str, np.ndarray]:
-        """Build observations for every agent."""
-        observations = {}
+    def _get_obs(self) -> Dict[str, np.ndarray]:
+        obs_all = {}
         for agent in self.agents:
             if not self.partial_observability:
-                observations[agent] = self.grid.copy()
+                obs_all[agent] = self.grid.copy()
                 continue
 
             size = int(self.view_size)
@@ -272,21 +257,17 @@ class GridWorldEnv(ParallelEnv):
             pc = col + radius
 
             obs = padded[pr - radius : pr + radius + 1, pc - radius : pc + radius + 1]
-            observations[agent] = obs[:size, :size].copy()
-        return observations
+            obs_all[agent] = obs[:size, :size].copy()
+        return obs_all
 
     def get_heatmaps(self) -> Dict[str, np.ndarray]:
-        """Return a shallow copy of per-agent visit heatmaps."""
         return self.heatmaps.copy()
 
     def get_resources_collected(self) -> Dict[str, int]:
-        """Return per-agent resource collection counts."""
         return self.resources_collected.copy()
 
     def get_final_grid(self) -> np.ndarray:
-        """Return a copy of the current grid."""
         return self.grid.copy()
 
     def get_initial_resource_positions(self) -> List[Tuple[int, int]]:
-        """Return the resource positions sampled at reset."""
         return self.initial_resource_positions.copy()

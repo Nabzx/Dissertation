@@ -1,5 +1,3 @@
-"""Continuous PPO training with occasional episode animation."""
-
 from __future__ import annotations
 
 from typing import Dict, List, Optional
@@ -25,7 +23,6 @@ def train_and_watch(
     render_interval: int = 50,
     save_gif_dir: Optional[str] = None,
 ) -> List[Dict]:
-    """Train one persistent PPO agent and optionally animate sampled episodes."""
     env = GridWorldEnv(
         grid_size=grid_size,
         num_resources=num_resources,
@@ -33,8 +30,8 @@ def train_and_watch(
         max_steps=max_steps,
     )
 
-    obs_shape = env.observation_spaces[env.agents[0]].shape
-    obs_dim = int(np.prod(obs_shape))
+    obs_size = env.observation_spaces[env.agents[0]].shape
+    obs_dim = int(np.prod(obs_size))
     if use_communication:
         obs_dim += int(CommunicationLayer(env).config.max_ints)
     action_dim = int(env.action_spaces[env.agents[0]].n)

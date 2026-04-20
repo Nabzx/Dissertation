@@ -1,5 +1,3 @@
-"""Animate saved grid states from one episode."""
-
 from __future__ import annotations
 
 import os
@@ -17,15 +15,14 @@ def animate_episode(
     interval: int = 200,
     block: bool = True,
 ):
-    """Animate a list of 2D grid snapshots and optionally save a GIF."""
     if not grid_sequence:
         raise ValueError("grid_sequence must contain at least one grid state.")
 
     max_value = int(max(np.max(frame) for frame in grid_sequence))
-    base_colors = ["white", "green", "blue", "red", "orange", "purple", "dimgray"]
-    if max_value + 1 > len(base_colors):
-        base_colors.extend(["cyan", "magenta", "yellow", "brown"][: max_value + 1 - len(base_colors)])
-    cmap = ListedColormap(base_colors[: max_value + 1])
+    base_colours = ["white", "green", "blue", "red", "orange", "purple", "dimgray"]
+    if max_value + 1 > len(base_colours):
+        base_colours.extend(["cyan", "magenta", "yellow", "brown"][: max_value + 1 - len(base_colours)])
+    cmap = ListedColormap(base_colours[: max_value + 1])
     norm = BoundaryNorm(np.arange(-0.5, max_value + 1.5, 1.0), cmap.N)
 
     fig, ax = plt.subplots(figsize=(8, 8))

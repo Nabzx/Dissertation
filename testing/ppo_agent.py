@@ -1,5 +1,3 @@
-"""PPO agent used by the GridWorld experiments."""
-
 from __future__ import annotations
 
 import math
@@ -15,19 +13,17 @@ try:
     import torch.optim as optim
 
     TORCH_AVAILABLE = True
-except Exception:  # pragma: no cover
+except Exception:
     TORCH_AVAILABLE = False
-    torch = None  # type: ignore
-    nn = object  # type: ignore
-    optim = object  # type: ignore
+    torch = None
+    nn = object
+    optim = object
 
 
 @dataclass
 class PPOConfig:
-    """PPO hyperparameters."""
-
     gamma: float = 0.99
-    lam: float = 0.95  # GAE lambda (used in a simplified way)
+    lam: float = 0.95
     clip_ratio: float = 0.2
     lr: float = 3e-4
     train_epochs: int = 4
@@ -40,8 +36,6 @@ class PPOConfig:
 if TORCH_AVAILABLE:
 
     class _MLPPolicyValue(nn.Module):
-        """Small shared-body network with policy and value heads."""
-
         def __init__(self, obs_dim: int, n_actions: int, hidden_dim: int = 64):
             super().__init__()
             self.body = nn.Sequential(
@@ -61,8 +55,6 @@ if TORCH_AVAILABLE:
 
 
 class PPOAgent:
-    """Discrete-action PPO policy/value agent."""
-
     def __init__(
         self,
         obs_dim: int,
@@ -80,8 +72,8 @@ class PPOAgent:
             self.model = _MLPPolicyValue(obs_dim, n_actions).to(self.device_t)
             self.optimizer = optim.Adam(self.model.parameters(), lr=self.config.lr)
         else:
-            self.model = None  # type: ignore
-            self.optimizer = None  # type: ignore
+            self.model = None
+            self.optimizer = None
 
         self.reset_buffer()
         self.update_history: List[Dict[str, float]] = []
@@ -98,7 +90,6 @@ class PPOAgent:
         }
 
     def select_action(self, obs: np.ndarray) -> Tuple[int, float, float]:
-        """Sample an action and return action, log-probability, and value."""
         if TORCH_AVAILABLE:
             obs_t = torch.from_numpy(obs.astype(np.float32)).to(self.device_t)
             with torch.no_grad():
@@ -128,7 +119,6 @@ class PPOAgent:
         value: float,
         trajectory_id: str = "default",
     ) -> None:
-        """Store one time-step transition in the on-policy buffer."""
         self.buffer["obs"].append(obs.astype(np.float32))
         self.buffer["actions"].append(np.array(action, dtype=np.int64))
         self.buffer["log_probs"].append(np.array(log_prob, dtype=np.float32))
@@ -140,7 +130,6 @@ class PPOAgent:
     def _compute_returns_and_advantages(
         self, last_value: float = 0.0, last_done: bool = True
     ) -> Tuple[np.ndarray, np.ndarray]:
-        """Compute GAE-Lambda advantages and returns."""
         rewards = np.array(self.buffer["rewards"], dtype=np.float32)
         values = np.array(self.buffer["values"], dtype=np.float32)
         dones = np.array(self.buffer["dones"], dtype=np.float32)
@@ -185,7 +174,6 @@ class PPOAgent:
         return returns, advantages
 
     def update(self, last_value: float = 0.0, last_done: bool = True) -> Dict[str, float]:
-        """Run one PPO update over the collected on-policy batch."""
         if not TORCH_AVAILABLE:
             raise RuntimeError(
                 "PPOAgent.update() was called but PyTorch is not installed. "
@@ -294,7 +282,6 @@ class PPOAgent:
         return metrics
 
     def save(self, path: str) -> None:
-        """Save model weights, optimizer state, config, and metric history."""
         if not TORCH_AVAILABLE:
             raise RuntimeError("Cannot save PPOAgent because PyTorch is not installed.")
 
@@ -316,7 +303,6 @@ class PPOAgent:
 
     @classmethod
     def load(cls, path: str, device: str = "cpu") -> "PPOAgent":
-        """Load a saved PPOAgent checkpoint."""
         if not TORCH_AVAILABLE:
             raise RuntimeError("Cannot load PPOAgent because PyTorch is not installed.")
 

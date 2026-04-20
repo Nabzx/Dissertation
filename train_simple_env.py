@@ -1,5 +1,3 @@
-"""Train PPO in the easier curriculum arena."""
-
 from __future__ import annotations
 
 import argparse

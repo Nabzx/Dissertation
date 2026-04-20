@@ -1,5 +1,3 @@
-"""Run the Capture the Flag arena demo."""
-
 from __future__ import annotations
 
 import argparse
@@ -41,17 +39,17 @@ def make_capture_flag_env(
 
 
 def build_agent_styles(env: GameModeWrapper) -> Dict[str, Dict[str, str]]:
-    team_colors = {
+    team_colours = {
         "Team A": ("#00d9ff", "#8ff3ff"),
         "Team B": ("#ff315a", "#ff9aaa"),
     }
     styles = {}
     for idx, agent_id in enumerate(env.agents):
         team_name = "Team A" if idx < 2 else "Team B"
-        color, edge_color = team_colors[team_name]
+        colour, edge_colour = team_colours[team_name]
         styles[agent_id] = {
-            "color": color,
-            "edge_color": edge_color,
+            "color": colour,
+            "edge_color": edge_colour,
             "label": team_name,
         }
     return styles
@@ -62,15 +60,13 @@ def choose_flag_action(env: GameModeWrapper, agent_id: str, occupied: set[Tuple[
     if flag_position is None:
         return 0
 
-    current = env.agent_positions[agent_id]
+    pos = env.agent_positions[agent_id]
     best_action = 0
-    best_distance = manhattan(current, flag_position)
+    best_distance = manhattan(pos, flag_position)
 
-    # Prefer direct progress, but let the env's movement helper enforce arena
-    # walls and obstacles so this demo stays compatible with future arena rules.
     for action in [1, 2, 3, 4]:
-        candidate = env._move_agent(current, action)
-        if candidate in occupied and candidate != current:
+        candidate = env._move_agent(pos, action)
+        if candidate in occupied and candidate != pos:
             continue
         distance = manhattan(candidate, flag_position)
         if distance < best_distance:
@@ -81,8 +77,8 @@ def choose_flag_action(env: GameModeWrapper, agent_id: str, occupied: set[Tuple[
         shuffled = [1, 2, 3, 4]
         np.random.shuffle(shuffled)
         for action in shuffled:
-            candidate = env._move_agent(current, action)
-            if candidate != current and candidate not in occupied:
+            candidate = env._move_agent(pos, action)
+            if candidate != pos and candidate not in occupied:
                 return action
 
     return best_action

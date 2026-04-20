@@ -1,5 +1,3 @@
-"""Episode and batch runners for the grid arena."""
-
 import json
 import os
 from typing import Dict, List, Optional
@@ -37,7 +35,6 @@ def run_episode(
     render: bool = False,
     train_policy: bool = True,
 ) -> Dict:
-    """Run one episode and return the data used by analysis scripts."""
     raw_obs, infos = env.reset(seed=episode_num)
 
     agent_type = agent_type.lower()
@@ -247,7 +244,6 @@ def run_batch_simulation(
     use_communication: bool = False,
     game_mode: str = "default",
 ) -> List[Dict]:
-    """Run a set of episodes and write the usual logs/results."""
     env = GridWorldEnv(
         grid_size=grid_size,
         num_agents=num_agents,
@@ -283,8 +279,8 @@ def run_batch_simulation(
         }
     elif agent_type == "ppo":
         agents = None
-        obs_shape = env.observation_spaces[env.agents[0]].shape
-        obs_dim = int(np.prod(obs_shape))
+        obs_size = env.observation_spaces[env.agents[0]].shape
+        obs_dim = int(np.prod(obs_size))
         if use_communication:
             obs_dim += int(CommunicationLayer(env).config.max_ints)
         action_dim = 5

@@ -1,5 +1,3 @@
-"""Compare a pretrained PPO checkpoint with a fresh PPO policy."""
-
 from __future__ import annotations
 
 import argparse

@@ -1,5 +1,3 @@
-"""Load a saved PPO checkpoint and watch evaluation episodes."""
-
 from __future__ import annotations
 
 import argparse
@@ -30,7 +28,6 @@ def demo_trained_agent(
     device: str = "cpu",
     environment_name: str = "main_arena",
 ) -> None:
-    """Run a fixed trained policy and animate each episode."""
     if not TORCH_AVAILABLE:
         raise RuntimeError("Demoing a trained PPO checkpoint requires PyTorch.")
 

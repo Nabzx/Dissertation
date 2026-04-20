@@ -1,5 +1,3 @@
-"""Generate preliminary plots and summaries from saved episodes."""
-
 import json
 import os
 from pathlib import Path
@@ -12,7 +10,6 @@ from env.utils import save_heatmap, save_movement_heatmap, save_reward_curve
 
 
 def load_episode_data(logs_dir: str = "logs/episodes") -> List[Dict]:
-    """Load episode JSON files from a logs directory."""
     episode_data = []
 
     if not os.path.exists(logs_dir):
@@ -30,7 +27,6 @@ def load_episode_data(logs_dir: str = "logs/episodes") -> List[Dict]:
 
 
 def calculate_survival_rate(episode_data: List[Dict]) -> Dict[str, float]:
-    """Calculate the legacy two-agent survival summary."""
     if len(episode_data) == 0:
         return {
             "agent_0_survival_rate": 0.0,
@@ -56,7 +52,6 @@ def calculate_survival_rate(episode_data: List[Dict]) -> Dict[str, float]:
 
 
 def calculate_cooperation_scores(episode_data: List[Dict]) -> Dict[str, float]:
-    """Calculate the original two-agent cooperation score."""
     if len(episode_data) == 0:
         return {
             "average_cooperation": 0.0,
@@ -83,8 +78,7 @@ def calculate_cooperation_scores(episode_data: List[Dict]) -> Dict[str, float]:
 
 
 def aggregate_heatmaps(episode_data: List[Dict], grid_size: int = 15) -> Dict[str, np.ndarray]:
-    """Add episode heatmaps together for agent_0 and agent_1."""
-    aggregated = {
+    total_heatmaps = {
         "agent_0": np.zeros((grid_size, grid_size), dtype=np.int32),
         "agent_1": np.zeros((grid_size, grid_size), dtype=np.int32),
     }
@@ -92,15 +86,14 @@ def aggregate_heatmaps(episode_data: List[Dict], grid_size: int = 15) -> Dict[st
     for ep in episode_data:
         if "heatmaps" in ep:
             for agent_id, heatmap_list in ep["heatmaps"].items():
-                if agent_id in aggregated:
+                if agent_id in total_heatmaps:
                     heatmap_array = np.array(heatmap_list, dtype=np.int32)
-                    aggregated[agent_id] += heatmap_array
+                    total_heatmaps[agent_id] += heatmap_array
 
-    return aggregated
+    return total_heatmaps
 
 
 def create_resource_distribution_heatmap(episode_data: List[Dict], grid_size: int = 15) -> np.ndarray:
-    """Count initial resource positions across episodes."""
     resource_heatmap = np.zeros((grid_size, grid_size), dtype=np.int32)
 
     for ep in episode_data:
@@ -115,7 +108,6 @@ def create_screenshot_montage(
     num_samples: int = 9,
     output_path: str = "results/screenshot_montage.png",
 ):
-    """Build a square-ish montage of saved final screenshots."""
     if len(episode_data) == 0:
         print("No episode data to create montage")
         return
@@ -160,7 +152,6 @@ def create_screenshot_montage(
 
 
 def generate_preliminary_results(logs_dir: str = "logs/episodes", results_dir: str = "results"):
-    """Generate all preliminary result files."""
     print("Loading episode data...")
     episode_data = load_episode_data(logs_dir)
 

@@ -1,5 +1,3 @@
-"""Run the default resource-scarcity experiment."""
-
 from train.run_simulation import run_batch_simulation
 from train.generate_preliminary_results import generate_preliminary_results
 
@@ -14,8 +12,8 @@ def main():
     grid_size = 15
     num_resources = 10
     max_steps = 200
-    agent_type = "heuristic"  # change to "ppo" to enable RL
-    reward_scheme = "selfish"  # selfish | mixed | fully_cooperative
+    agent_type = "heuristic"
+    reward_scheme = "selfish"
     run_tag = f"{agent_type}_{reward_scheme}"
 
     print("Configuration:")

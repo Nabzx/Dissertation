@@ -1,5 +1,3 @@
-"""Live arena renderer and playback controls."""
-
 from __future__ import annotations
 
 from collections import deque
@@ -19,8 +17,6 @@ from testing.rewards import apply_reward_scheme
 
 
 class LiveEpisodeRenderer:
-    """Matplotlib UI for the arena, HUD, and training graphs."""
-
     def __init__(
         self,
         initial_grid: np.ndarray,
@@ -51,8 +47,8 @@ class LiveEpisodeRenderer:
         self.obstacle_value = int(obstacle_value) if obstacle_value is not None else int(np.max(initial_grid))
         self.agent_values = list(range(2, self.obstacle_value))
         self.agent_facing = {agent_value: (0, 1) for agent_value in self.agent_values}
-        self.agent_colors = ["#38bdf8", "#f43f5e", "#f59e0b", "#a78bfa", "#22c55e", "#f97316"]
-        self.agent_edge_colors = ["#0ea5e9", "#be123c", "#d97706", "#7c3aed", "#15803d", "#c2410c"]
+        self.agent_colours = ["#38bdf8", "#f43f5e", "#f59e0b", "#a78bfa", "#22c55e", "#f97316"]
+        self.agent_edge_colours = ["#0ea5e9", "#be123c", "#d97706", "#7c3aed", "#15803d", "#c2410c"]
         self.agent_labels = {
             agent_value: f"Agent {agent_value - 2}"
             for agent_value in self.agent_values
@@ -61,13 +57,13 @@ class LiveEpisodeRenderer:
             for agent_value in self.agent_values:
                 agent_id = f"agent_{agent_value - 2}"
                 style = agent_styles.get(agent_id, {})
-                color = style.get("color")
+                colour = style.get("color")
                 edge = style.get("edge_color")
                 label = style.get("label")
-                if color:
-                    self.agent_colors[self._agent_index(agent_value) % len(self.agent_colors)] = color
+                if colour:
+                    self.agent_colours[self._agent_index(agent_value) % len(self.agent_colours)] = colour
                 if edge:
-                    self.agent_edge_colors[self._agent_index(agent_value) % len(self.agent_edge_colors)] = edge
+                    self.agent_edge_colours[self._agent_index(agent_value) % len(self.agent_edge_colours)] = edge
                 if label:
                     self.agent_labels[agent_value] = label
         self.arena_palette = {
@@ -79,10 +75,10 @@ class LiveEpisodeRenderer:
             "tile_edge": "#2a323a",
             "wall": "#9ca3af",
             "wall_glow": "#c7a76a",
-            "agent_0": self.agent_colors[0],
-            "agent_0_edge": self.agent_edge_colors[0],
-            "agent_1": self.agent_colors[1],
-            "agent_1_edge": self.agent_edge_colors[1],
+            "agent_0": self.agent_colours[0],
+            "agent_0_edge": self.agent_edge_colours[0],
+            "agent_1": self.agent_colours[1],
+            "agent_1_edge": self.agent_edge_colours[1],
             "resource": "#8bff63",
             "resource_edge": "#3b7f2d",
             "obstacle": "#4b5563",
@@ -155,11 +151,10 @@ class LiveEpisodeRenderer:
 
         self._setup_hud_axis()
 
-        # Draw a dark arena floor once; outside the octagon is treated as void.
         for row in range(rows):
             for col in range(cols):
                 inside_arena = self.arena_mask[row, col]
-                base_color = (
+                base_colour = (
                     self.arena_palette["floor_a"]
                     if (row + col) % 2 == 0
                     else self.arena_palette["floor_b"]
@@ -168,14 +163,13 @@ class LiveEpisodeRenderer:
                     (col, row),
                     1,
                     1,
-                    facecolor=base_color if inside_arena else self.arena_palette["floor_outside"],
+                    facecolor=base_colour if inside_arena else self.arena_palette["floor_outside"],
                     edgecolor=self.arena_palette["tile_edge"] if inside_arena else self.arena_palette["void"],
                     linewidth=0.35 if inside_arena else 0.0,
                     zorder=0,
                 )
                 self.ax_grid.add_patch(tile)
 
-        # Add a subtle vignette-like dark panel over the whole floor for a more cinematic feel.
         vignette = np.linspace(0.0, 1.0, 300)
         vignette = np.outer(
             np.minimum(vignette, vignette[::-1]),
@@ -218,16 +212,16 @@ class LiveEpisodeRenderer:
 
         self.perception_cell_patches = {agent_value: [] for agent_value in self.agent_values}
         perception_fill = {
-            agent_value: self._agent_color(agent_value)
+            agent_value: self._agent_colour(agent_value)
             for agent_value in self.agent_values
         }
-        for agent_value, color in perception_fill.items():
+        for agent_value, colour in perception_fill.items():
             for _ in range(6):
                 patch = Rectangle(
                     (0, 0),
                     1,
                     1,
-                    facecolor=color,
+                    facecolor=colour,
                     edgecolor="none",
                     alpha=0.055,
                     zorder=2.45,
@@ -237,16 +231,16 @@ class LiveEpisodeRenderer:
                 self.ax_grid.add_patch(patch)
 
         self.perception_ray_lines = {agent_value: [] for agent_value in self.agent_values}
-        ray_colors = {
-            agent_value: self._agent_color(agent_value)
+        ray_colours = {
+            agent_value: self._agent_colour(agent_value)
             for agent_value in self.agent_values
         }
-        for agent_value, color in ray_colors.items():
+        for agent_value, colour in ray_colours.items():
             for _ in range(3):
                 line = Line2D(
                     [],
                     [],
-                    color=color,
+                    color=colour,
                     linewidth=0.85,
                     alpha=0.26,
                     solid_capstyle="round",
@@ -259,15 +253,15 @@ class LiveEpisodeRenderer:
         self.communication_lines = {}
         self.communication_pulses = {}
         self.communication_text = {}
-        communication_colors = {
-            agent_value: (self._agent_color(agent_value), self._agent_edge_color(agent_value))
+        communication_colours = {
+            agent_value: (self._agent_colour(agent_value), self._agent_edge_colour(agent_value))
             for agent_value in self.agent_values
         }
-        for agent_value, (primary_color, secondary_color) in communication_colors.items():
+        for agent_value, (main_colour, edge_colour) in communication_colours.items():
             line = Line2D(
                 [],
                 [],
-                color=primary_color,
+                color=main_colour,
                 linewidth=1.6,
                 alpha=0.0,
                 solid_capstyle="round",
@@ -281,7 +275,7 @@ class LiveEpisodeRenderer:
                 (-10.0, -10.0),
                 radius=0.42,
                 fill=False,
-                edgecolor=secondary_color,
+                edgecolor=edge_colour,
                 linewidth=1.6,
                 alpha=0.0,
                 zorder=4.6,
@@ -298,7 +292,7 @@ class LiveEpisodeRenderer:
                 color="#e5e7eb",
                 ha="center",
                 va="center",
-                bbox=dict(facecolor="#111827", edgecolor=primary_color, boxstyle="round,pad=0.2", alpha=0.0),
+                bbox=dict(facecolor="#111827", edgecolor=main_colour, boxstyle="round,pad=0.2", alpha=0.0),
                 zorder=4.7,
                 visible=False,
             )
@@ -398,8 +392,8 @@ class LiveEpisodeRenderer:
             self.agent_patches[agent_value] = Circle(
                 (0.5, 0.5),
                 radius=0.3,
-                facecolor=self._agent_color(agent_value),
-                edgecolor=self._agent_edge_color(agent_value),
+                facecolor=self._agent_colour(agent_value),
+                edgecolor=self._agent_edge_colour(agent_value),
                 linewidth=2.0,
                 zorder=4,
                 visible=False,
@@ -407,17 +401,17 @@ class LiveEpisodeRenderer:
         for patch in self.agent_patches.values():
             self.ax_grid.add_patch(patch)
 
-        trail_colors = {
-            agent_value: self._agent_color(agent_value)
+        trail_colours = {
+            agent_value: self._agent_colour(agent_value)
             for agent_value in self.agent_values
         }
         self.trail_patches = {agent_value: [] for agent_value in self.agent_values}
-        for agent_value, color in trail_colors.items():
+        for agent_value, colour in trail_colours.items():
             for _ in range(self.trail_length):
                 trail_patch = Circle(
                     (-10.0, -10.0),
                     radius=0.12,
-                    facecolor=color,
+                    facecolor=colour,
                     edgecolor="none",
                     alpha=0.0,
                     zorder=3.6,
@@ -427,7 +421,7 @@ class LiveEpisodeRenderer:
                 self.ax_grid.add_patch(trail_patch)
 
         legend_handles = [
-            Line2D([0], [0], marker="o", color="none", markerfacecolor=self._agent_color(self.agent_values[0]), markeredgecolor=self._agent_edge_color(self.agent_values[0]), markersize=9, label="Agent"),
+            Line2D([0], [0], marker="o", color="none", markerfacecolor=self._agent_colour(self.agent_values[0]), markeredgecolor=self._agent_edge_colour(self.agent_values[0]), markersize=9, label="Agent"),
             Line2D([0], [0], marker="o", color="none", markerfacecolor=self.arena_palette["resource"], markeredgecolor=self.arena_palette["resource_edge"], markersize=7, label="Resource"),
             Line2D([0], [0], marker="^", color="none", markerfacecolor="#facc15", markeredgecolor="#fde68a", markersize=9, label="Flag"),
             Rectangle((0, 0), 1, 1, facecolor=self.arena_palette["obstacle"], edgecolor=self.arena_palette["obstacle_edge"], label="Obstacle"),
@@ -553,7 +547,7 @@ class LiveEpisodeRenderer:
         self.ax_coop.legend(loc="lower right", frameon=False, fontsize=9)
 
         self.fig.subplots_adjust(left=0.035, right=0.985, top=0.91, bottom=0.18)
-        self._update_environment(initial_grid)
+        self._update_env(initial_grid)
 
     def _add_figure_background(self) -> None:
         bg_axis = self.fig.add_axes([0, 0, 1, 1], zorder=-10)
@@ -571,11 +565,11 @@ class LiveEpisodeRenderer:
     def _agent_index(self, agent_value: int) -> int:
         return int(agent_value) - 2
 
-    def _agent_color(self, agent_value: int) -> str:
-        return self.agent_colors[self._agent_index(agent_value) % len(self.agent_colors)]
+    def _agent_colour(self, agent_value: int) -> str:
+        return self.agent_colours[self._agent_index(agent_value) % len(self.agent_colours)]
 
-    def _agent_edge_color(self, agent_value: int) -> str:
-        return self.agent_edge_colors[self._agent_index(agent_value) % len(self.agent_edge_colors)]
+    def _agent_edge_colour(self, agent_value: int) -> str:
+        return self.agent_edge_colours[self._agent_index(agent_value) % len(self.agent_edge_colours)]
 
     def _agent_id(self, agent_value: int) -> str:
         return f"agent_{self._agent_index(agent_value)}"
@@ -655,7 +649,7 @@ class LiveEpisodeRenderer:
         for idx, agent_value in enumerate(self.agent_values):
             agent_id = self._agent_id(agent_value)
             y = top - (idx + 1) * card_height - idx * gap
-            accent = self._agent_color(agent_value)
+            accent = self._agent_colour(agent_value)
             self.ax_hud.add_patch(
                 Rectangle(
                     (0.06, y),
@@ -762,7 +756,7 @@ class LiveEpisodeRenderer:
         hud_state: Optional[Dict[str, object]] = None,
         render_info: Optional[Dict[str, object]] = None,
     ) -> None:
-        self._update_environment(
+        self._update_env(
             grid,
             actions=actions,
             communication_events=communication_events,
@@ -773,7 +767,7 @@ class LiveEpisodeRenderer:
         self.fig.canvas.draw_idle()
         plt.pause(self.get_speed_delay(render_delay))
 
-    def _update_environment(
+    def _update_env(
         self,
         grid: np.ndarray,
         actions: Optional[Dict[str, int]] = None,
@@ -814,7 +808,7 @@ class LiveEpisodeRenderer:
 
         self._apply_resource_animations()
 
-        current_positions: Dict[int, tuple[int, int]] = {}
+        now_positions: Dict[int, tuple[int, int]] = {}
         for agent_value, patch in self.agent_patches.items():
             positions = np.argwhere(grid == agent_value)
             if len(positions) == 0:
@@ -831,15 +825,15 @@ class LiveEpisodeRenderer:
             self._append_trail_position(agent_value, int(row), int(col))
             patch.center = (float(col) + 0.5, float(row) + 0.5)
             patch.set_visible(True)
-            current_positions[agent_value] = (int(row), int(col))
+            now_positions[agent_value] = (int(row), int(col))
 
-        self._update_communication_visuals(current_positions, communication_events)
-        self._update_game_mode_visuals(render_info, current_positions)
+        self._update_communication_visuals(now_positions, communication_events)
+        self._update_game_mode_visuals(render_info, now_positions)
 
     def _update_game_mode_visuals(
         self,
         render_info: Optional[Dict[str, object]],
-        current_positions: Dict[int, tuple[int, int]],
+        now_positions: Dict[int, tuple[int, int]],
     ) -> None:
         self.flag_patch.set_visible(False)
         self.flag_glow_patch.set_visible(False)
@@ -867,7 +861,7 @@ class LiveEpisodeRenderer:
         winner = render_info.get("winner")
         if winner:
             winner_value = self._agent_value(str(winner))
-            winner_position = current_positions.get(winner_value)
+            winner_position = now_positions.get(winner_value)
             if winner_position is not None:
                 row, col = winner_position
                 self.winner_highlight_patch.center = (float(col) + 0.5, float(row) + 0.5)
@@ -1053,8 +1047,8 @@ class LiveEpisodeRenderer:
                 if not self.arena_mask[target_row, target_col]:
                     break
 
-                cell_center = (float(target_col) + 0.5, float(target_row) + 0.5)
-                points.append(cell_center)
+                cell_centre = (float(target_col) + 0.5, float(target_row) + 0.5)
+                points.append(cell_centre)
                 cells.append((target_row, target_col))
 
                 if grid[target_row, target_col] == self.obstacle_value:
@@ -1182,8 +1176,8 @@ class LiveEpisodeRenderer:
             return
 
         x_vals = list(range(len(self.episode_rewards)))
-        reward_smoothed = self._moving_average(self.episode_rewards, self.smoothing_window)
-        resource_smoothed = self._moving_average(self.episode_resources, self.smoothing_window)
+        reward_smoothed = self._moving_avg(self.episode_rewards, self.smoothing_window)
+        resource_smoothed = self._moving_avg(self.episode_resources, self.smoothing_window)
 
         plot_x = x_vals[:: self.plot_downsample] or x_vals[-1:]
         plot_reward = reward_smoothed[:: self.plot_downsample] or reward_smoothed[-1:]
@@ -1204,10 +1198,10 @@ class LiveEpisodeRenderer:
             return
 
         x_vals = list(range(len(self.policy_losses)))
-        policy_smoothed = self._moving_average(self.policy_losses, self.smoothing_window)
-        entropy_smoothed = self._moving_average(self.entropy_values, self.smoothing_window)
-        value_smoothed = self._moving_average(self.value_losses, self.smoothing_window)
-        grad_smoothed = self._moving_average_ignore_nan(self.gradient_norms, self.smoothing_window)
+        policy_smoothed = self._moving_avg(self.policy_losses, self.smoothing_window)
+        entropy_smoothed = self._moving_avg(self.entropy_values, self.smoothing_window)
+        value_smoothed = self._moving_avg(self.value_losses, self.smoothing_window)
+        grad_smoothed = self._moving_avg_skip_nan(self.gradient_norms, self.smoothing_window)
 
         plot_x = x_vals[:: self.plot_downsample] or x_vals[-1:]
         plot_policy = policy_smoothed[:: self.plot_downsample] or policy_smoothed[-1:]
@@ -1243,8 +1237,8 @@ class LiveEpisodeRenderer:
         self.balance_values.append(balance)
 
     def _update_cooperation_lines(self, x_vals: List[int]) -> None:
-        fairness_smoothed = self._moving_average_ignore_nan(self.fairness_values, self.smoothing_window)
-        balance_smoothed = self._moving_average_ignore_nan(self.balance_values, self.smoothing_window)
+        fairness_smoothed = self._moving_avg_skip_nan(self.fairness_values, self.smoothing_window)
+        balance_smoothed = self._moving_avg_skip_nan(self.balance_values, self.smoothing_window)
 
         plot_x = x_vals[:: self.plot_downsample] or x_vals[-1:]
         plot_fairness = fairness_smoothed[:: self.plot_downsample] or fairness_smoothed[-1:]
@@ -1253,13 +1247,13 @@ class LiveEpisodeRenderer:
         self.fairness_line.set_data(plot_x, plot_fairness)
         self.balance_line.set_data(plot_x, plot_balance)
 
-    def _moving_average(self, values: List[float], window: int) -> List[float]:
+    def _moving_avg(self, values: List[float], window: int) -> List[float]:
         return [
             float(np.mean(values[max(0, idx - window + 1) : idx + 1]))
             for idx in range(len(values))
         ]
 
-    def _moving_average_ignore_nan(self, values: List[float], window: int) -> List[float]:
+    def _moving_avg_skip_nan(self, values: List[float], window: int) -> List[float]:
         smoothed: List[float] = []
         for idx in range(len(values)):
             window_values = np.array(values[max(0, idx - window + 1) : idx + 1], dtype=float)
@@ -1338,8 +1332,6 @@ class LiveEpisodeRenderer:
 
 
 class PlaybackController:
-    """Slider/button controls for recorded episode history."""
-
     def __init__(
         self,
         renderer: LiveEpisodeRenderer,
@@ -1587,9 +1579,6 @@ def run_live_training(
     show_communication: bool = True,
     mode: str = "playback",
 ) -> List[Dict]:
-    """
-    Run many PPO episodes with a persistent live renderer window.
-    """
     mode = mode.lower().strip()
     if mode not in {"live", "playback"}:
         raise ValueError("mode must be 'live' or 'playback'")
@@ -1603,8 +1592,8 @@ def run_live_training(
     )
     max_possible_reward = float(num_resources * len(env.agents))
 
-    obs_shape = env.observation_spaces[env.agents[0]].shape
-    obs_dim = int(np.prod(obs_shape))
+    obs_size = env.observation_spaces[env.agents[0]].shape
+    obs_dim = int(np.prod(obs_size))
     if use_communication:
         obs_dim += int(CommunicationLayer(env).config.max_ints)
     action_dim = int(env.action_spaces[env.agents[0]].n)

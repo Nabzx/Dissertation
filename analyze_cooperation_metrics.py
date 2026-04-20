@@ -1,5 +1,3 @@
-"""Analyze cooperation metrics from headless PPO training output."""
-
 from __future__ import annotations
 
 import argparse
@@ -46,7 +44,7 @@ def compute_episode_metrics(
         efficiency = collected / available if available > 0 else 0.0
         fairness = jains_fairness_index(agent_counts.values())
         balance_gap = max(agent_counts.values(), default=0) - min(agent_counts.values(), default=0)
-        normalized_balance_gap = balance_gap / collected if collected > 0 else 0.0
+        normalised_balance_gap = balance_gap / collected if collected > 0 else 0.0
         cooperation_score = efficiency * fairness
         survival = {agent: count > 0 for agent, count in agent_counts.items()}
         all_survived = all(survival.values()) if survival else False
@@ -62,7 +60,7 @@ def compute_episode_metrics(
             "jain_fairness": fairness,
             "cooperation_score": cooperation_score,
             "balance_gap": balance_gap,
-            "normalized_balance_gap": normalized_balance_gap,
+            "normalized_balance_gap": normalised_balance_gap,
             "agent_survival": survival,
             "all_survived": all_survived,
             "any_survived": any_survived,

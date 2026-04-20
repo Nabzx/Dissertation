@@ -1,5 +1,3 @@
-"""Small wrapper layer for arena-specific minigames."""
-
 from __future__ import annotations
 
 from typing import Any, Dict, Optional, Tuple
@@ -9,8 +7,6 @@ AgentInfo = Dict[str, Any]
 
 
 class ArenaScenario:
-    """Base class for rule sets that sit on top of ``GridWorldEnv``."""
-
     def __init__(self, env):
         self.env = env
         self.last_actions: Optional[Dict[str, int]] = None
@@ -38,7 +34,6 @@ class ArenaScenario:
     def get_arena_render_info(self):
         return {}
 
-    # Backward-compatible names used by the first minigame wrapper.
     def compute_rewards(self):
         return self.compute_arena_rewards()
 
@@ -50,8 +45,6 @@ class ArenaScenario:
 
 
 class ArenaScenarioWrapper:
-    """Let an arena scenario adjust rewards, done flags, metrics, and render info."""
-
     def __init__(self, env, arena_scenario: ArenaScenario):
         if arena_scenario.env is not env:
             raise ValueError("GameModeWrapper requires game_mode.env to be the wrapped env.")
@@ -66,19 +59,19 @@ class ArenaScenarioWrapper:
         self.metadata = getattr(env, "metadata", {})
 
     def reset(self, seed: Optional[int] = None, options: Optional[dict] = None):
-        observations, infos = self.env.reset(seed=seed, options=options)
+        obs, infos = self.env.reset(seed=seed, options=options)
         scenario_result = self.arena_scenario.reset()
 
         if scenario_result is not None:
-            observations, infos = self._merge_reset_result(observations, infos, scenario_result)
+            obs, infos = self._merge_reset_result(obs, infos, scenario_result)
 
-        return observations, self._attach_scenario_info(infos)
+        return obs, self._attach_scenario_info(infos)
 
     def step(self, actions: Dict[str, int]):
-        observations, raw_rewards, terminations, truncations, infos = self.env.step(actions)
+        obs, raw_rewards, terminations, truncations, infos = self.env.step(actions)
 
         self.arena_scenario.last_actions = actions
-        self.arena_scenario.last_observations = observations
+        self.arena_scenario.last_observations = obs
         self.arena_scenario.last_raw_rewards = raw_rewards
         self.arena_scenario.last_terminations = terminations
         self.arena_scenario.last_truncations = truncations
@@ -86,8 +79,8 @@ class ArenaScenarioWrapper:
 
         scenario_result = self.arena_scenario.step(actions)
         if scenario_result is not None:
-            observations, raw_rewards, terminations, truncations, infos = self._merge_step_result(
-                observations,
+            obs, raw_rewards, terminations, truncations, infos = self._merge_step_result(
+                obs,
                 raw_rewards,
                 terminations,
                 truncations,
@@ -105,7 +98,7 @@ class ArenaScenarioWrapper:
             truncations,
         )
 
-        return observations, rewards, terminations, truncations, self._attach_scenario_info(infos)
+        return obs, rewards, terminations, truncations, self._attach_scenario_info(infos)
 
     def get_metrics(self) -> Dict[str, Any]:
         return self.arena_scenario.get_metrics()
@@ -149,22 +142,22 @@ class ArenaScenarioWrapper:
 
         raise TypeError("GameMode.is_done() must return None, bool, or a dict of agent flags.")
 
-    def _merge_reset_result(self, observations: AgentInfo, infos: AgentInfo, reset_result):
+    def _merge_reset_result(self, obs: AgentInfo, infos: AgentInfo, reset_result):
         if isinstance(reset_result, tuple):
             if len(reset_result) != 2:
                 raise ValueError("GameMode.reset() tuple result must be (observations, infos).")
             return reset_result
 
         if isinstance(reset_result, dict):
-            observations = reset_result.get("observations", observations)
+            obs = reset_result.get("observations", obs)
             infos = reset_result.get("infos", infos)
-            return observations, infos
+            return obs, infos
 
         raise TypeError("GameMode.reset() must return None, a dict, or (observations, infos).")
 
     def _merge_step_result(
         self,
-        observations: AgentInfo,
+        obs: AgentInfo,
         rewards: Dict[str, float],
         terminations: Dict[str, bool],
         truncations: Dict[str, bool],
@@ -180,19 +173,19 @@ class ArenaScenarioWrapper:
             return step_result
 
         if isinstance(step_result, dict):
-            observations = step_result.get("observations", observations)
+            obs = step_result.get("observations", obs)
             rewards = step_result.get("rewards", rewards)
             terminations = step_result.get("terminations", terminations)
             truncations = step_result.get("truncations", truncations)
             infos = step_result.get("infos", infos)
-            return observations, rewards, terminations, truncations, infos
+            return obs, rewards, terminations, truncations, infos
 
         raise TypeError("GameMode.step() must return None, a dict, or a 5-item step tuple.")
 
 
 class GameMode(ArenaScenario):
-    """Compatibility name for older minigame code."""
+    pass
 
 
 class GameModeWrapper(ArenaScenarioWrapper):
-    """Compatibility wrapper name used by existing runners."""
+    pass
