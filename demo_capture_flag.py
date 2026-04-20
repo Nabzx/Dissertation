@@ -1,9 +1,4 @@
-"""
-Dedicated live demo for the Capture the Flag minigame.
-
-Run with:
-    python3 demo_capture_flag.py
-"""
+"""Run the Capture the Flag arena demo."""
 
 from __future__ import annotations
 
@@ -33,7 +28,7 @@ def make_capture_flag_env(
     num_obstacles: int,
     max_steps: int,
 ) -> GameModeWrapper:
-    base_env = GridWorldEnv(
+    arena = GridWorldEnv(
         grid_size=grid_size,
         num_agents=num_agents,
         num_resources=0,
@@ -42,7 +37,7 @@ def make_capture_flag_env(
         max_resources=0,
         max_steps=max_steps,
     )
-    return GameModeWrapper(base_env, CaptureFlagGame(base_env))
+    return GameModeWrapper(arena, CaptureFlagGame(arena))
 
 
 def build_agent_styles(env: GameModeWrapper) -> Dict[str, Dict[str, str]]:
@@ -107,8 +102,7 @@ def build_hud_state(
     wins: Dict[str, int],
     capture_times: List[int],
 ) -> Dict[str, object]:
-    game_metrics = env.get_metrics()
-    game_metrics = dict(game_metrics)
+    game_metrics = dict(env.get_metrics())
     game_metrics["wins"] = wins.copy()
     game_metrics["average_time_to_flag"] = (
         float(np.mean(capture_times)) if capture_times else None
@@ -148,14 +142,16 @@ def build_history_frame(
     wins: Dict[str, int],
     capture_times: List[int],
 ) -> Dict[str, object]:
+    positions = {
+        agent_id: tuple(map(int, position))
+        for agent_id, position in env.agent_positions.items()
+    }
+
     return {
         "episode": episode,
         "step": step,
         "grid": env.grid.copy(),
-        "agent_positions": {
-            agent_id: tuple(map(int, position))
-            for agent_id, position in env.agent_positions.items()
-        },
+        "agent_positions": positions,
         "resource_positions": [],
         "render_info": env.get_render_info(),
         "game_metrics": build_hud_state(
@@ -214,6 +210,7 @@ def run_capture_flag_demo(
     for episode_idx in range(num_episodes):
         episode = episode_idx + 1
         env.reset(seed=episode_idx)
+
         if debug:
             print(
                 f"[capture-flag] episode={episode} reset "
@@ -223,7 +220,6 @@ def run_capture_flag_demo(
         total_reward = 0.0
         episode_history: List[Dict[str, object]] = []
         actions: Optional[Dict[str, int]] = None
-
         episode_history.append(
             build_history_frame(env, episode, 0, total_reward, actions, wins, capture_times)
         )
@@ -315,10 +311,9 @@ def run_capture_flag_demo(
         }
         history.append(episode_history)
         summaries.append(summary)
-        renderer_for_plot = renderer
-        if renderer_for_plot is not None:
-            renderer_for_plot.update_learning_plot(total_reward, 1 if winner else 0, wins)
-            renderer_for_plot.refresh(render_delay)
+        if renderer is not None:
+            renderer.update_learning_plot(total_reward, 1 if winner else 0, wins)
+            renderer.refresh(render_delay)
 
         print(
             f"Capture Flag episode {episode}/{num_episodes}: "

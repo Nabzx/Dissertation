@@ -1,6 +1,4 @@
-"""
-Utilities for animating a single gridworld episode.
-"""
+"""Animate saved grid states from one episode."""
 
 from __future__ import annotations
 
@@ -8,7 +6,7 @@ import os
 from typing import List, Optional
 
 import matplotlib.pyplot as plt
-import numpy as np 
+import numpy as np
 from matplotlib import animation
 from matplotlib.colors import BoundaryNorm, ListedColormap
 
@@ -19,18 +17,7 @@ def animate_episode(
     interval: int = 200,
     block: bool = True,
 ):
-    """
-    Animate a sequence of grid states for one episode.
-
-    Args:
-        grid_sequence: List of 2D numpy arrays representing grid states over time
-        save_path: Optional output path for a GIF
-        interval: Delay between frames in milliseconds
-        block: Whether to block execution while the animation window is shown
-
-    Returns:
-        The matplotlib animation object
-    """
+    """Animate a list of 2D grid snapshots and optionally save a GIF."""
     if not grid_sequence:
         raise ValueError("grid_sequence must contain at least one grid state.")
 
@@ -67,9 +54,9 @@ def animate_episode(
     )
 
     if save_path is not None:
-        save_dir = os.path.dirname(save_path)
-        if save_dir:
-            os.makedirs(save_dir, exist_ok=True)
+        output_dir = os.path.dirname(save_path)
+        if output_dir:
+            os.makedirs(output_dir, exist_ok=True)
         ani.save(save_path, writer="pillow")
 
     plt.show(block=block)

@@ -1,6 +1,4 @@
-"""
-Persistent real-time renderer for continuous PPO training episodes.
-"""
+"""Live arena renderer and playback controls."""
 
 from __future__ import annotations
 
@@ -21,9 +19,7 @@ from testing.rewards import apply_reward_scheme
 
 
 class LiveEpisodeRenderer:
-    """
-    Keeps a single matplotlib window alive while multiple episodes run.
-    """
+    """Matplotlib UI for the arena, HUD, and training graphs."""
 
     def __init__(
         self,
@@ -1342,9 +1338,7 @@ class LiveEpisodeRenderer:
 
 
 class PlaybackController:
-    """
-    Interactive playback controls for recorded episode history.
-    """
+    """Slider/button controls for recorded episode history."""
 
     def __init__(
         self,
