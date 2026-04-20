@@ -1,20 +1,10 @@
-"""
-Minimal PPO implementation for the GridWorld testing pipeline.
-
-This implementation is intentionally small and beginner friendly. It is not
-optimised and is only meant to demonstrate a reasonable PPO-like workflow
-for interview / experimentation purposes.
-
-The agent expects *flat* vector observations. In the testing pipeline we
-achieve this by flattening the 15x15 grid observation (and optionally
-concatenating a small communication vector).
-"""
+"""PPO agent used by the GridWorld experiments."""
 
 from __future__ import annotations
 
 import math
-from dataclasses import asdict, dataclass
 import os
+from dataclasses import asdict, dataclass
 from typing import Dict, List, Tuple
 
 import numpy as np
@@ -25,9 +15,7 @@ try:
     import torch.optim as optim
 
     TORCH_AVAILABLE = True
-except Exception:  # pragma: no cover - safety net for environments without torch
-    # Torch is optional. The rest of the testing pipeline should still import
-    # cleanly even if PPO training cannot run.
+except Exception:  # pragma: no cover
     TORCH_AVAILABLE = False
     torch = None  # type: ignore
     nn = object  # type: ignore
@@ -36,7 +24,7 @@ except Exception:  # pragma: no cover - safety net for environments without torc
 
 @dataclass
 class PPOConfig:
-    """Small configuration bundle for PPO hyperparameters."""
+    """PPO hyperparameters."""
 
     gamma: float = 0.99
     lam: float = 0.95  # GAE lambda (used in a simplified way)
@@ -52,11 +40,7 @@ class PPOConfig:
 if TORCH_AVAILABLE:
 
     class _MLPPolicyValue(nn.Module):
-        """
-        Tiny shared-body MLP with separate policy and value heads.
-
-        This is deliberately small: two hidden layers with ReLU activations.
-        """
+        """Small shared-body network with policy and value heads."""
 
         def __init__(self, obs_dim: int, n_actions: int, hidden_dim: int = 64):
             super().__init__()
@@ -77,15 +61,7 @@ if TORCH_AVAILABLE:
 
 
 class PPOAgent:
-    """
-    Simple PPO agent for discrete actions.
-
-    When PyTorch is available, this uses a small neural network. When PyTorch
-    is NOT available, the class still initialises but any attempt to call
-    ``update`` will raise a friendly error explaining the limitation. This
-    allows the rest of the testing pipeline to run (e.g., with random actions)
-    in environments that do not ship with torch by default.
-    """
+    """Discrete-action PPO policy/value agent."""
 
     def __init__(
         self,
@@ -107,13 +83,9 @@ class PPOAgent:
             self.model = None  # type: ignore
             self.optimizer = None  # type: ignore
 
-        # Simple buffer to collect trajectory data for a batch update.
         self.reset_buffer()
         self.update_history: List[Dict[str, float]] = []
 
-    # ------------------------------------------------------------------
-    # Trajectory buffer helpers
-    # ------------------------------------------------------------------
     def reset_buffer(self) -> None:
         self.buffer: Dict[str, List[np.ndarray]] = {
             "obs": [],
@@ -126,12 +98,7 @@ class PPOAgent:
         }
 
     def select_action(self, obs: np.ndarray) -> Tuple[int, float, float]:
-        """
-        Choose an action given a single flat observation.
-
-        Returns:
-            action (int), log_prob (float), value_estimate (float)
-        """
+        """Sample an action and return action, log-probability, and value."""
         if TORCH_AVAILABLE:
             obs_t = torch.from_numpy(obs.astype(np.float32)).to(self.device_t)
             with torch.no_grad():
@@ -146,7 +113,6 @@ class PPOAgent:
                 float(value.item()),
             )
 
-        # Fallback: random policy with a dummy value estimate.
         action = np.random.randint(self.n_actions)
         log_prob = -math.log(self.n_actions)
         value_estimate = 0.0
@@ -171,24 +137,10 @@ class PPOAgent:
         self.buffer["values"].append(np.array(value, dtype=np.float32))
         self.buffer["trajectory_ids"].append(trajectory_id)
 
-    # ------------------------------------------------------------------
-    # PPO update
-    # ------------------------------------------------------------------
     def _compute_returns_and_advantages(
         self, last_value: float = 0.0, last_done: bool = True
     ) -> Tuple[np.ndarray, np.ndarray]:
-        """
-        Compute GAE-Lambda advantages and bootstrapped returns.
-
-        GAE estimates how much better an action was than the critic expected:
-
-            delta_t = r_t + gamma * V(s_{t+1}) - V(s_t)
-            A_t = discounted sum of deltas
-
-        Returns are then reconstructed as:
-
-            return_t = A_t + V(s_t)
-        """
+        """Compute GAE-Lambda advantages and returns."""
         rewards = np.array(self.buffer["rewards"], dtype=np.float32)
         values = np.array(self.buffer["values"], dtype=np.float32)
         dones = np.array(self.buffer["dones"], dtype=np.float32)
@@ -226,7 +178,6 @@ class PPOAgent:
 
         returns = advantages + values
 
-        # Normalise advantages for PPO stability without changing returns.
         adv_mean = advantages.mean()
         adv_std = advantages.std() + 1e-8
         advantages = (advantages - adv_mean) / adv_std
@@ -234,12 +185,7 @@ class PPOAgent:
         return returns, advantages
 
     def update(self, last_value: float = 0.0, last_done: bool = True) -> Dict[str, float]:
-        """
-        Perform a PPO update using the collected on-policy batch.
-
-        If torch is not available, this method will raise a friendly error to
-        explain that learning cannot proceed in the current environment.
-        """
+        """Run one PPO update over the collected on-policy batch."""
         if not TORCH_AVAILABLE:
             raise RuntimeError(
                 "PPOAgent.update() was called but PyTorch is not installed. "
@@ -259,7 +205,6 @@ class PPOAgent:
             self.update_history.append(metrics)
             return metrics
 
-        # Prepare tensors
         obs = torch.from_numpy(np.stack(self.buffer["obs"])).to(self.device_t)
         actions = torch.from_numpy(np.stack(self.buffer["actions"])).to(self.device_t)
         old_log_probs = torch.from_numpy(
@@ -297,7 +242,6 @@ class PPOAgent:
                 log_probs = dist.log_prob(batch_actions)
                 entropy = dist.entropy().mean()
 
-                # PPO clipped objective
                 ratio = torch.exp(log_probs - batch_old_log_probs)
                 surr1 = ratio * batch_adv
                 surr2 = torch.clamp(
@@ -336,7 +280,6 @@ class PPOAgent:
                 approx_kls.append(float(approx_kl.item()))
                 clip_fractions.append(float(clip_fraction.item()))
 
-        # Clear buffer after update
         self.reset_buffer()
 
         metrics = {

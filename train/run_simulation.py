@@ -1,13 +1,10 @@
-"""
-Simulation runner for the grid world environment.
+"""Episode and batch runners for the grid arena."""
 
-This script runs batches of episodes and collects data for analysis.
-"""
-
-import numpy as np
 import json
 import os
 from typing import Dict, List, Optional
+
+import numpy as np
 
 from env.gridworld_env import GridWorldEnv
 from agents.heuristic_agent import HeuristicAgent
@@ -40,28 +37,7 @@ def run_episode(
     render: bool = False,
     train_policy: bool = True,
 ) -> Dict:
-    """
-    Run a single episode of the simulation.
-
-    Args:
-        env: GridWorldEnv instance
-        agents: Dict mapping agent IDs to HeuristicAgent instances
-        episode_num: Episode number for logging
-        save_screenshots: Whether to save grid screenshots
-        save_heatmaps: Whether to save heatmap visualizations
-        save_artifacts: Whether to save plots and JSON outputs for the episode
-        agent_type: "heuristic" (default) or "ppo"
-        ppo_agent: Shared PPOAgent instance when agent_type == "ppo"
-        logs_dir: Base logs directory (e.g., "logs/heuristic_selfish")
-        results_dir: Base results directory (e.g., "results/heuristic_selfish")
-        reward_scheme: "selfish", "mixed", or "fully_cooperative" (shaping for PPO; logged for all)
-        use_communication: If True, augment PPO observations with a bandwidth-limited message vector
-        render: If True, capture full-grid states across the episode for animation
-        train_policy: If False, run PPO inference only and skip buffer/update logic
-
-    Returns:
-        Dict containing episode data
-    """
+    """Run one episode and return the data used by analysis scripts."""
     raw_obs, infos = env.reset(seed=episode_num)
 
     agent_type = agent_type.lower()
@@ -85,15 +61,12 @@ def run_episode(
     else:
         obs = raw_obs
 
-    # Reset agents / buffers
     if agent_type == "heuristic":
         for agent in agents.values():
             agent.reset()
     elif train_policy:
-        # Keep PPO updates episode-scoped for simplicity.
         ppo_agent.reset_buffer()
 
-    # Store episode trajectory and agent positions
     trajectory = []
     agent_trajectories = {agent: [] for agent in env.agents}
     grid_sequence: List[np.ndarray] = []
@@ -102,14 +75,11 @@ def run_episode(
     if render:
         grid_sequence.append(env.grid.copy())
 
-    # Store initial positions
     for agent_id in env.agents:
         pos = env.agent_positions[agent_id]
         agent_trajectories[agent_id].append(pos)
 
-    # Run episode
     while True:
-        # Get actions from agents
         actions = {}
         step_log_probs: Dict[str, float] = {}
         step_values: Dict[str, float] = {}
@@ -120,7 +90,6 @@ def run_episode(
                 actions[agent_id] = agent.get_action(obs[agent_id])
         else:
             for agent_id in env.agents:
-                # If communication is enabled, obs[agent_id] is already a flat vector.
                 agent_obs = obs[agent_id]
                 flat_obs = agent_obs if agent_obs.ndim == 1 else agent_obs.flatten()
                 action, log_prob, value = ppo_agent.select_action(flat_obs)
@@ -129,13 +98,11 @@ def run_episode(
                 step_values[agent_id] = float(value)
                 step_flat_obs[agent_id] = flat_obs
 
-        # Step environment
         raw_next_obs, rewards, terminations, truncations, infos = env.step(actions)
 
         if game_mode_active:
             shaped_rewards = rewards.copy()
         else:
-            # Raw collection counts from env (before shaping)
             for agent_id, r in rewards.items():
                 if r > 0.0:
                     cumulative_collected[agent_id] += 1
@@ -149,7 +116,6 @@ def run_episode(
             )
         total_shaped_reward += sum(shaped_rewards.values())
 
-        # Store PPO transitions (after env.step, using shaped reward + done).
         if agent_type == "ppo" and train_policy:
             for agent_id in env.agents:
                 done = bool(terminations[agent_id] or truncations[agent_id])
@@ -163,7 +129,6 @@ def run_episode(
                     trajectory_id=agent_id,
                 )
 
-        # Update communication messages for next step (PPO only)
         if comm_layer is not None:
             comm_layer.update_messages_after_step()
             obs = comm_layer.build_augment_observation(raw_next_obs)
@@ -173,12 +138,10 @@ def run_episode(
         if render:
             grid_sequence.append(env.grid.copy())
 
-        # Store agent positions after step
         for agent_id in env.agents:
             pos = env.agent_positions[agent_id]
             agent_trajectories[agent_id].append(pos)
 
-        # Store step data
         trajectory.append(
             {
                 "step": step_count,
@@ -190,32 +153,26 @@ def run_episode(
 
         step_count += 1
 
-        # Check if episode is done
         if all(terminations.values()) or all(truncations.values()):
             break
 
-    # PPO update at the end of the episode.
     ppo_metrics = None
     if agent_type == "ppo" and train_policy:
         try:
             ppo_metrics = ppo_agent.update(last_value=0.0, last_done=True)
         except RuntimeError as exc:
-            # PyTorch missing or other training-time issue. Keep simulation running.
             print(f"[ppo] Update skipped: {exc}")
 
-    # Collect episode data
     heatmaps = env.get_heatmaps()
     resources_collected = env.get_resources_collected()
     final_grid = env.get_final_grid()
     initial_resources = env.get_initial_resource_positions()
 
-    # Save screenshots
     screenshot_path = None
     if save_artifacts and save_screenshots:
         screenshot_path = os.path.join(logs_dir, "screenshots", f"episode_{episode_num:04d}_final.png")
         save_grid_screenshot(final_grid, screenshot_path, title=f"Episode {episode_num} - Final State")
 
-    # Save heatmaps
     heatmap_paths = {}
     if save_artifacts and save_heatmaps:
         for agent_id, heatmap in heatmaps.items():
@@ -223,18 +180,15 @@ def run_episode(
             save_heatmap(heatmap, heatmap_path, agent_id, title=f"Episode {episode_num} - {agent_id}")
             heatmap_paths[agent_id] = heatmap_path
 
-    # Save resource distribution
     resource_dist_path = None
     if save_artifacts:
         resource_dist_path = os.path.join(logs_dir, "resources", f"episode_{episode_num:04d}_distribution.png")
         plot_resource_distribution(initial_resources, resource_dist_path, grid_size=env.grid_size)
 
-    # Save trajectory plots for episodes 0 and 1
     if save_artifacts and episode_num in [0, 1]:
         trajectory_path = os.path.join(results_dir, "trajectories", f"episode_{episode_num}_trajectory.png")
         save_trajectory_plot(agent_trajectories, env.grid_size, trajectory_path)
 
-    # Create episode summary
     episode_data = {
         "episode_num": episode_num,
         "reward_scheme": reward_scheme,
@@ -252,7 +206,6 @@ def run_episode(
         },
         "all_survived": all(resources_collected.get(agent, 0) >= 1 for agent in env.agents),
         "any_survived": any(resources_collected.get(agent, 0) >= 1 for agent in env.agents),
-        # Backward-compatible aliases for older analysis scripts.
         "agent_0_survived": resources_collected.get("agent_0", 0) >= 1,
         "agent_1_survived": resources_collected.get("agent_1", 0) >= 1,
         "both_survived": all(
@@ -263,14 +216,11 @@ def run_episode(
         "screenshot_path": screenshot_path,
         "heatmap_paths": heatmap_paths,
         "resource_dist_path": resource_dist_path,
-        # Store heatmaps as lists for JSON serialisation
         "heatmaps": {agent_id: heatmap.tolist() for agent_id, heatmap in heatmaps.items()},
-        # Store trajectories
         "trajectories": {agent_id: positions for agent_id, positions in agent_trajectories.items()},
         "ppo_metrics": ppo_metrics,
     }
 
-    # Save episode JSON
     if save_artifacts:
         episode_json_path = os.path.join(logs_dir, "episodes", f"episode_{episode_num:04d}.json")
         os.makedirs(os.path.dirname(episode_json_path), exist_ok=True)
@@ -297,21 +247,7 @@ def run_batch_simulation(
     use_communication: bool = False,
     game_mode: str = "default",
 ) -> List[Dict]:
-    """
-    Run a batch of simulation episodes.
-
-    Args:
-        num_episodes: Number of episodes to run
-        grid_size: Size of the grid
-        num_resources: Number of resources per episode
-        max_steps: Maximum steps per episode
-        save_screenshots: Whether to save grid screenshots
-        save_heatmaps: Whether to save heatmap visualisations
-
-    Returns:
-        List of episode data dictionaries
-    """
-    # Create environment
+    """Run a set of episodes and write the usual logs/results."""
     env = GridWorldEnv(
         grid_size=grid_size,
         num_agents=num_agents,
@@ -331,7 +267,6 @@ def run_batch_simulation(
     mode_tag = "" if game_mode in ("default", "none") else f"_{game_mode}"
     run_tag = f"{agent_type}_{reward_scheme}{mode_tag}" + ("_comm" if use_communication else "")
 
-    # Per experiment: agent_type + reward_scheme
     logs_dir = f"logs/{run_tag}"
     results_dir = f"results/{run_tag}"
     os.makedirs(os.path.join(logs_dir, "episodes"), exist_ok=True)
@@ -341,7 +276,6 @@ def run_batch_simulation(
     os.makedirs(os.path.join(results_dir, "trajectories"), exist_ok=True)
     os.makedirs(os.path.join(results_dir, "reward_curves"), exist_ok=True)
 
-    # Create agents (heuristic) or PPO policy (shared)
     ppo_agent: Optional[PPOAgent] = None
     if agent_type == "heuristic":
         agents: Optional[Dict[str, HeuristicAgent]] = {
@@ -349,18 +283,15 @@ def run_batch_simulation(
         }
     elif agent_type == "ppo":
         agents = None
-        # Derive obs_dim from the environment to support both full and partial observability.
         obs_shape = env.observation_spaces[env.agents[0]].shape
         obs_dim = int(np.prod(obs_shape))
         if use_communication:
-            # Communication layer concatenates a fixed-length message vector.
             obs_dim += int(CommunicationLayer(env).config.max_ints)
         action_dim = 5
         ppo_agent = PPOAgent(obs_dim=obs_dim, n_actions=action_dim)
     else:
         raise ValueError(f"Unknown agent_type '{agent_type}'. Expected 'heuristic' or 'ppo'.")
 
-    # Run episodes
     all_episode_data = []
 
     print(f"Running {num_episodes} episodes...")
@@ -381,7 +312,6 @@ def run_batch_simulation(
         )
         all_episode_data.append(episode_data)
 
-        # Print summary
         resources = episode_data["resources_collected"]
         resource_text = ", ".join(f"{agent}: {count}" for agent, count in resources.items())
         print(f"{resource_text}, Steps: {episode_data['total_steps']}")
@@ -393,7 +323,6 @@ def run_batch_simulation(
 
 
 if __name__ == "__main__":
-    # Run a batch of simulations
     episode_data = run_batch_simulation(
         num_episodes=20,
         grid_size=15,
