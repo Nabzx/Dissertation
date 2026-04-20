@@ -1,4 +1,4 @@
-"""Capture the Flag minigame for the GridWorld arena."""
+"""Capture the Flag rules for the GridWorld arena."""
 
 from __future__ import annotations
 
@@ -6,20 +6,14 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
-from minigames.base_game import GameMode
+from minigames.base_game import ArenaScenario
 
 
 Position = Tuple[int, int]
 
 
-class CaptureFlagGame(GameMode):
-    """
-    Competitive race mode where the first agent to reach a flag wins.
-
-    The wrapped environment still handles normal movement, obstacles, arena
-    bounds, and observations. This game mode adds a separate flag target,
-    custom rewards, and a winner-based termination condition.
-    """
+class CaptureFlagGame(ArenaScenario):
+    """Race scenario where the first agent to step onto the flag wins."""
 
     def __init__(
         self,
@@ -54,8 +48,7 @@ class CaptureFlagGame(GameMode):
         if self.flag_position is None:
             self.flag_position = self._sample_flag_position()
 
-        # GameModeWrapper calls this after env.step(), so positions here are
-        # post-movement. Winner detection therefore reflects the current move.
+        # The wrapper calls this after env.step(), so positions are post-move.
         self.current_distances = self._compute_distances()
         self.winner = self._find_winner()
         self.done = self.winner is not None
@@ -67,10 +60,10 @@ class CaptureFlagGame(GameMode):
             }
         return None
 
-    def compute_rewards(self):
+    def compute_arena_rewards(self):
         return self.last_rewards.copy()
 
-    def is_done(self):
+    def is_round_done(self):
         return self.done
 
     def get_metrics(self):
@@ -83,7 +76,7 @@ class CaptureFlagGame(GameMode):
             "done": self.done,
         }
 
-    def get_render_info(self):
+    def get_arena_render_info(self):
         return {
             "mode": "capture_flag",
             "flag_position": self.flag_position,
@@ -148,10 +141,10 @@ class CaptureFlagGame(GameMode):
         return rewards
 
     def _build_teams(self) -> Dict[str, str]:
-        teams = {}
-        for idx, agent in enumerate(self.env.agents):
-            teams[agent] = "Team A" if idx < 2 else "Team B"
-        return teams
+        return {
+            agent: "Team A" if idx < 2 else "Team B"
+            for idx, agent in enumerate(self.env.agents)
+        }
 
     def _spawn_teams_near_bottom(self) -> None:
         """Place each two-agent team in adjacent valid cells near the bottom."""
@@ -179,11 +172,13 @@ class CaptureFlagGame(GameMode):
                 self.env.grid[position[0], position[1]] = self.env.agent_value(agent)
                 used.add(position)
 
-        if hasattr(self.env, "heatmaps"):
-            for heatmap in self.env.heatmaps.values():
-                heatmap[:, :] = 0
-            for agent, position in self.env.agent_positions.items():
-                self.env.heatmaps[agent][position[0], position[1]] += 1
+        if not hasattr(self.env, "heatmaps"):
+            return
+
+        for heatmap in self.env.heatmaps.values():
+            heatmap[:, :] = 0
+        for agent, position in self.env.agent_positions.items():
+            self.env.heatmaps[agent][position[0], position[1]] += 1
 
     def _sample_adjacent_spawn_group(
         self,
