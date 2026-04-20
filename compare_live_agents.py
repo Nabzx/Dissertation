@@ -1,12 +1,4 @@
-"""
-Live Hunger Games arena comparison for multiple PPO policy types.
-
-The environment contains multiple agents at the same time, but each agent is
-assigned to a policy group:
-- pretrained: loaded from a curriculum/simple-environment checkpoint
-- scratch: fresh random PPO network
-- trained: optional long-trained checkpoint
-"""
+"""Live arena demo comparing pretrained, scratch, and optional trained PPO."""
 
 from __future__ import annotations
 

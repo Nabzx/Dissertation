@@ -85,7 +85,6 @@ def main() -> None:
         results_dir=f"results/{run_tag}",
     )
 
-    # Summary statistics
     total_resources = [sum(ep["resources_collected"].values()) for ep in episode_data]
     mean_resources = float(np.mean(total_resources)) if total_resources else 0.0
 

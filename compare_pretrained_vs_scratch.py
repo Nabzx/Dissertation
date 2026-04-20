@@ -1,10 +1,4 @@
-"""
-Evaluate a pretrained PPO checkpoint against an untrained PPO policy.
-
-Both policies are evaluated in the main Hunger Games arena with learning
-disabled. This isolates whether pretraining in the simple environment transfers
-to the harder deployment arena.
-"""
+"""Compare a pretrained PPO checkpoint with a fresh PPO policy."""
 
 from __future__ import annotations
 

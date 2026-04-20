@@ -1,18 +1,10 @@
-"""
-Compute cooperation and performance metrics from headless PPO training output.
-
-The input is the JSON metrics file produced by train_headless.py. Outputs:
-- per-episode CSV with cooperation metrics
-- per-episode JSON with the same metrics
-- summary JSON with aggregate statistics
-"""
+"""Analyze cooperation metrics from headless PPO training output."""
 
 from __future__ import annotations
 
 import argparse
 import csv
 import json
-import math
 import os
 from statistics import mean, median, pstdev
 from typing import Dict, Iterable, List
