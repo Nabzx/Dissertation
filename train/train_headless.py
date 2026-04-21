@@ -39,7 +39,16 @@ def train_headless(
     if not TORCH_AVAILABLE:
         raise RuntimeError("Headless PPO training requires PyTorch.")
 
+    run_name = f"run_{num_episodes}"
+    if checkpoint_dir == "checkpoints":
+        checkpoint_dir = os.path.join("checkpoints", run_name)
+    if metrics_path == "results/headless_training_metrics.json":
+        metrics_path = os.path.join("results", run_name, "headless_training_metrics.json")
+    if csv_path == "results/headless_training_metrics.csv":
+        csv_path = os.path.join("results", run_name, "headless_training_metrics.csv")
+
     os.makedirs(checkpoint_dir, exist_ok=True)
+    os.makedirs(os.path.join("logs", run_name), exist_ok=True)
     for output_path in [metrics_path, csv_path]:
         output_dir = os.path.dirname(output_path)
         if output_dir:

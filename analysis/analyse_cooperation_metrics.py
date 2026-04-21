@@ -173,10 +173,10 @@ def write_csv(path: str, rows: List[Dict]) -> None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Analyse multi-agent cooperation metrics.")
-    parser.add_argument("--input", default="results/headless_training_metrics_10000.json")
-    parser.add_argument("--per-episode-csv", default="results/cooperation_metrics_10000.csv")
-    parser.add_argument("--per-episode-json", default="results/cooperation_metrics_10000.json")
-    parser.add_argument("--summary-json", default="results/cooperation_summary_10000.json")
+    parser.add_argument("--input", default="results/run_10000/headless_training_metrics_10000.json")
+    parser.add_argument("--per-episode-csv", default="results/run_10000/cooperation_metrics_10000.csv")
+    parser.add_argument("--per-episode-json", default="results/run_10000/cooperation_metrics_10000.json")
+    parser.add_argument("--summary-json", default="results/run_10000/cooperation_summary_10000.json")
     parser.add_argument("--total-available", type=int, default=10)
     parser.add_argument("--smoothing-window", type=int, default=50)
     return parser.parse_args()
@@ -207,7 +207,7 @@ def main() -> None:
         f"efficiency={summary['metrics']['resource_efficiency']['mean']:.3f}, "
         f"fairness={summary['metrics']['jain_fairness']['mean']:.3f}, "
         f"cooperation={summary['metrics']['cooperation_score']['mean']:.3f}, "
-        f"both_survival={summary['survival_rates']['both_agents']:.3f}"
+        f"both_survival={summary['survival_rates']['all_agents']:.3f}"
     )
 
 

@@ -16,11 +16,11 @@ from env.gridworld_env import GridWorldEnv
 from agents.communication import CommunicationLayer
 from agents.ppo_agent import PPOAgent, TORCH_AVAILABLE
 from train.run_simulation import run_episode
-from demos.visualise_episode import animate_episode
+from scripts.visualise_episode import animate_episode
 
 
 def demo_trained_agent(
-    checkpoint_path: str = "checkpoints/ppo_latest.pt",
+    checkpoint_path: str = "checkpoints/run_10000/ppo_latest.pt",
     num_episodes: int = 5,
     reward_scheme: str = "selfish",
     use_communication: bool = False,
@@ -99,7 +99,7 @@ def demo_trained_agent(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Visualise a trained PPO checkpoint.")
-    parser.add_argument("--checkpoint", default="checkpoints/ppo_latest.pt")
+    parser.add_argument("--checkpoint", default="checkpoints/run_10000/ppo_latest.pt")
     parser.add_argument("--num-episodes", type=int, default=5)
     parser.add_argument("--reward-scheme", default="selfish")
     parser.add_argument("--communication", action="store_true")

@@ -14,7 +14,7 @@ from agents.communication import CommunicationLayer
 from agents.ppo_agent import PPOAgent
 from env.rewards import apply_reward_scheme
 
-from demos import renderer_draw, renderer_ui
+from env import renderer_draw, renderer_ui
 
 FRAME_TIME = 1.0 / 60.0
 

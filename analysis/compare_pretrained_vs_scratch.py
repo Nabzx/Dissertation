@@ -133,9 +133,9 @@ def write_outputs(rows: List[Dict], summary: Dict, output_dir: str) -> None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Compare pretrained PPO with scratch PPO in the main arena.")
-    parser.add_argument("--checkpoint", default="checkpoints/simple_env/ppo_latest.pt")
+    parser.add_argument("--checkpoint", default="checkpoints/run_10000/ppo_latest.pt")
     parser.add_argument("--num-episodes", type=int, default=100)
-    parser.add_argument("--output-dir", default="results/pretrained_comparison")
+    parser.add_argument("--output-dir", default="results/run_10000/pretrained_comparison")
     parser.add_argument("--reward-scheme", default="selfish")
     parser.add_argument("--communication", action="store_true")
     parser.add_argument("--grid-size", type=int, default=25)
@@ -157,7 +157,7 @@ def main() -> None:
         print()
         print("Pretrained checkpoint not found.")
         print("Run pretraining first to generate the checkpoint:")
-        print("python3 scripts/train_simple_env.py --num-episodes 5000")
+        print("python3 train/train_simple_env.py --num-episodes 5000")
         print()
         print(f"Expected checkpoint path: {args.checkpoint}")
         sys.exit(1)

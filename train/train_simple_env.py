@@ -8,7 +8,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from scripts.train_headless import train_headless
+from train.train_headless import train_headless
 
 
 def parse_args() -> argparse.Namespace:
@@ -32,6 +32,14 @@ def parse_args() -> argparse.Namespace:
 
 if __name__ == "__main__":
     args = parse_args()
+    run_name = f"run_{args.num_episodes}"
+    if args.checkpoint_dir == "checkpoints/simple_env":
+        args.checkpoint_dir = f"checkpoints/{run_name}"
+    if args.metrics_path == "results/simple_env_training_metrics.json":
+        args.metrics_path = f"results/{run_name}/simple_env_training_metrics.json"
+    if args.csv_path == "results/simple_env_training_metrics.csv":
+        args.csv_path = f"results/{run_name}/simple_env_training_metrics.csv"
+
     latest_checkpoint_path = f"{args.checkpoint_dir.rstrip('/')}/ppo_latest.pt"
     print("Simple-environment PPO pretraining")
     print(f"Checkpoint directory: {args.checkpoint_dir}")

@@ -1,15 +1,20 @@
 import json
 import os
+import sys
 from pathlib import Path
 from typing import Dict, List
 
 import numpy as np
 import matplotlib.pyplot as plt
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
 from env.utils import save_heatmap, save_movement_heatmap, save_reward_curve
 
 
-def load_episode_data(logs_dir: str = "logs/episodes") -> List[Dict]:
+def load_episode_data(logs_dir: str = "logs/run_5000/episodes") -> List[Dict]:
     episode_data = []
 
     if not os.path.exists(logs_dir):
@@ -106,7 +111,7 @@ def create_resource_distribution_heatmap(episode_data: List[Dict], grid_size: in
 def create_screenshot_montage(
     episode_data: List[Dict],
     num_samples: int = 9,
-    output_path: str = "results/screenshot_montage.png",
+    output_path: str = "results/run_5000/screenshot_montage.png",
 ):
     if len(episode_data) == 0:
         print("No episode data to create montage")
@@ -151,7 +156,7 @@ def create_screenshot_montage(
     print(f"Saved screenshot montage to {output_path}")
 
 
-def generate_preliminary_results(logs_dir: str = "logs/episodes", results_dir: str = "results"):
+def generate_preliminary_results(logs_dir: str = "logs/run_5000/episodes", results_dir: str = "results/run_5000"):
     print("Loading episode data...")
     episode_data = load_episode_data(logs_dir)
 

@@ -17,7 +17,7 @@ if str(PROJECT_ROOT) not in sys.path:
 import numpy as np
 
 from env.gridworld_env import GridWorldEnv
-from demos.live_renderer import LiveEpisodeRenderer, build_communication_events_from_flags
+from env.live_renderer import LiveEpisodeRenderer, build_communication_events_from_flags
 from agents.ppo_agent import PPOAgent, TORCH_AVAILABLE
 from env.rewards import apply_reward_scheme
 
@@ -132,7 +132,7 @@ def create_policy_pool(
     if not os.path.exists(checkpoint):
         print("Pretrained checkpoint not found.")
         print("Run pretraining first:")
-        print("python3 scripts/train_simple_env.py --num-episodes 5000")
+        print("python3 train/train_simple_env.py --num-episodes 5000")
         print(f"Expected checkpoint path: {checkpoint}")
         sys.exit(1)
 
@@ -464,7 +464,7 @@ def write_logs(rows: List[Dict], output_dir: str) -> None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Live visual comparison of pretrained vs scratch agents.")
-    parser.add_argument("--checkpoint", default="checkpoints/simple_env/ppo_latest.pt")
+    parser.add_argument("--checkpoint", default="checkpoints/run_10000/ppo_latest.pt")
     parser.add_argument("--trained-checkpoint", default=None, help=argparse.SUPPRESS)
     parser.add_argument("--learning-mode", choices=("on", "off"), default="off")
     parser.add_argument("--num-episodes", type=int, default=10)
@@ -475,7 +475,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-steps", type=int, default=250)
     parser.add_argument("--reward-scheme", default="selfish")
     parser.add_argument("--render-delay", type=float, default=0.01)
-    parser.add_argument("--output-dir", default="results/live_agent_comparison")
+    parser.add_argument("--output-dir", default="results/run_10000/live_agent_comparison")
     parser.add_argument("--device", default="cpu")
     return parser.parse_args()
 
