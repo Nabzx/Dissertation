@@ -101,7 +101,7 @@ class LiveEpisodeRenderer:
             for agent_value in self.agent_values
         }
         self.communication_state = {
-            agent_value: {"ttl": 0, "receiver": self._default_receiver(agent_value), "preview": ""}
+            agent_value: {"pulses": []}
             for agent_value in self.agent_values
         }
         self.previous_resource_positions: set[tuple[int, int]] = set()
@@ -250,53 +250,22 @@ class LiveEpisodeRenderer:
                 self.perception_ray_lines[agent_value].append(line)
                 self.ax_grid.add_line(line)
 
-        self.communication_lines = {}
-        self.communication_pulses = {}
-        self.communication_text = {}
-        communication_colours = {
-            agent_value: (self._agent_colour(agent_value), self._agent_edge_colour(agent_value))
-            for agent_value in self.agent_values
-        }
-        for agent_value, (main_colour, edge_colour) in communication_colours.items():
-            line = Line2D(
-                [],
-                [],
-                color=main_colour,
-                linewidth=1.6,
-                alpha=0.0,
-                solid_capstyle="round",
-                zorder=3.35,
-                visible=False,
-            )
-            self.ax_grid.add_line(line)
-            self.communication_lines[agent_value] = line
-
-            pulse = Circle(
-                (-10.0, -10.0),
-                radius=0.42,
-                fill=False,
-                edgecolor=edge_colour,
-                linewidth=1.6,
-                alpha=0.0,
-                zorder=4.6,
-                visible=False,
-            )
-            self.ax_grid.add_patch(pulse)
-            self.communication_pulses[agent_value] = pulse
-
-            text = self.ax_grid.text(
-                -10.0,
-                -10.0,
-                "",
-                fontsize=7.5,
-                color="#e5e7eb",
-                ha="center",
-                va="center",
-                bbox=dict(facecolor="#111827", edgecolor=main_colour, boxstyle="round,pad=0.2", alpha=0.0),
-                zorder=4.7,
-                visible=False,
-            )
-            self.communication_text[agent_value] = text
+        self.communication_pulse_patches = {}
+        for agent_value in self.agent_values:
+            self.communication_pulse_patches[agent_value] = []
+            for _ in range(6):
+                pulse = Circle(
+                    (-10.0, -10.0),
+                    radius=0.0,
+                    fill=False,
+                    edgecolor="#facc15",
+                    linewidth=1.8,
+                    alpha=0.0,
+                    zorder=3.85,
+                    visible=False,
+                )
+                self.ax_grid.add_patch(pulse)
+                self.communication_pulse_patches[agent_value].append(pulse)
 
         self.resource_patches: List[Circle] = []
         for _ in range(max_resources):
@@ -1267,66 +1236,52 @@ class LiveEpisodeRenderer:
         communication_events: Optional[List[Dict[str, object]]],
     ) -> None:
         if not self.show_communication:
-            for agent_value in self.communication_lines.keys():
-                self.communication_lines[agent_value].set_visible(False)
-                self.communication_pulses[agent_value].set_visible(False)
-                self.communication_text[agent_value].set_visible(False)
+            for state in self.communication_state.values():
+                state["pulses"] = []
+            for patches in self.communication_pulse_patches.values():
+                for patch in patches:
+                    patch.set_visible(False)
             return
 
         if communication_events:
             for event in communication_events:
                 sender = int(event["sender"])
-                receiver = int(event["receiver"])
-                preview = str(event.get("preview", "msg"))
-                self.communication_state[sender]["ttl"] = self.communication_fade_steps
-                self.communication_state[sender]["receiver"] = receiver
-                self.communication_state[sender]["preview"] = preview
+                if sender in self.communication_state:
+                    self.communication_state[sender]["pulses"].append({"radius": 0.0, "alpha": 0.65})
 
         for sender, state in self.communication_state.items():
-            line = self.communication_lines[sender]
-            pulse = self.communication_pulses[sender]
-            text = self.communication_text[sender]
-
-            if state["ttl"] <= 0 or sender not in positions or state["receiver"] not in positions:
-                line.set_visible(False)
-                pulse.set_visible(False)
-                text.set_visible(False)
+            patches = self.communication_pulse_patches[sender]
+            if sender not in positions:
+                state["pulses"] = []
+                for patch in patches:
+                    patch.set_visible(False)
                 continue
 
-            alpha = state["ttl"] / float(self.communication_fade_steps)
             sender_row, sender_col = positions[sender]
-            receiver_row, receiver_col = positions[int(state["receiver"])]
             sx = float(sender_col) + 0.5
             sy = float(sender_row) + 0.5
-            rx = float(receiver_col) + 0.5
-            ry = float(receiver_row) + 0.5
+            active_pulses = []
+            for pulse_state in state["pulses"]:
+                pulse_state["radius"] = float(pulse_state["radius"]) + 0.5
+                pulse_state["alpha"] = float(pulse_state["alpha"]) * 0.9
+                if pulse_state["alpha"] > 0.05:
+                    active_pulses.append(pulse_state)
+            state["pulses"] = active_pulses[-len(patches):]
 
-            curve_x, curve_y = self._build_signal_curve((sx, sy), (rx, ry), sender)
-            line.set_data(curve_x, curve_y)
-            line.set_alpha(0.15 + 0.45 * alpha)
-            line.set_visible(True)
-
-            pulse.center = (sx, sy)
-            pulse.set_radius(0.28 + 0.22 * alpha)
-            pulse.set_alpha(0.15 + 0.5 * alpha)
-            pulse.set_visible(True)
-
-            text.set_position((sx, sy - 0.55))
-            text.set_text(str(state["preview"]))
-            text.get_bbox_patch().set_alpha(0.2 + 0.45 * alpha)
-            text.set_alpha(0.55 + 0.35 * alpha)
-            text.set_visible(True)
-
-            state["ttl"] -= 1
+            for patch, pulse_state in zip(patches, state["pulses"]):
+                patch.center = (sx, sy)
+                patch.set_radius(float(pulse_state["radius"]))
+                patch.set_alpha(float(pulse_state["alpha"]))
+                patch.set_visible(True)
+            for patch in patches[len(state["pulses"]):]:
+                patch.set_visible(False)
 
     def reset_communication_visuals(self) -> None:
         for state in self.communication_state.values():
-            state["ttl"] = 0
-            state["preview"] = ""
-        for agent_value in self.communication_lines.keys():
-            self.communication_lines[agent_value].set_visible(False)
-            self.communication_pulses[agent_value].set_visible(False)
-            self.communication_text[agent_value].set_visible(False)
+            state["pulses"] = []
+        for patches in self.communication_pulse_patches.values():
+            for patch in patches:
+                patch.set_visible(False)
 
     def reset_playback_visual_state(self, grid: np.ndarray) -> None:
         self.reset_communication_visuals()
