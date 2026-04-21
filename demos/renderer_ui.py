@@ -5,7 +5,6 @@ from typing import Dict, List, Optional
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.patches import FancyBboxPatch, Rectangle
-from matplotlib.widgets import Button, Slider
 
 
 def _shift_environment_axis_right(self) -> None:
@@ -481,59 +480,9 @@ def _moving_avg(self, values: List[float], window: int) -> List[float]:
         for idx in range(len(values))
     ]
 
-def set_speed_preset(self, delay: float) -> None:
-    self.set_speed_delay(delay)
-    if hasattr(self, "live_speed_slider"):
-        self.live_speed_slider.set_val(self.speed_delay)
-
-def attach_speed_status_label(self, mode_label: str) -> None:
-    self.speed_status_mode = mode_label
-    if not hasattr(self, "speed_status_text"):
-        self.speed_status_text = self.fig.text(
-            0.835,
-            0.025,
-            "",
-            ha="left",
-            va="center",
-            fontsize=8.5,
-            color="#e5e7eb",
-            bbox=dict(facecolor="#0f172a", edgecolor="#334155", boxstyle="round,pad=0.28", alpha=0.9),
-        )
-    self._update_speed_status_label()
-
-def _update_speed_status_label(self) -> None:
-    if not hasattr(self, "speed_status_text"):
-        return
-    mode_label = getattr(self, "speed_status_mode", "Live")
-    self.speed_status_text.set_text(f"{mode_label} delay: {self.speed_delay:.4f}s/frame")
-
-def setup_live_speed_controls(self, initial_delay: float) -> None:
-    self.set_speed_delay(initial_delay)
+def setup_live_speed_controls(self, _unused: float) -> None:
     self.fig.subplots_adjust(bottom=0.24)
     self._shift_environment_axis_right()
-
-    ax_speed = self.fig.add_axes([0.08, 0.06, 0.46, 0.025])
-    self.live_speed_slider = Slider(
-        ax_speed,
-        "Delay",
-        0.0001,
-        0.1,
-        valinit=self.speed_delay,
-        valfmt="%.4f",
-    )
-    self.live_speed_slider.on_changed(self.set_speed_delay)
-    self.attach_speed_status_label("Live")
-
-    preset_specs = [
-        ("Slow", [0.58, 0.045, 0.07, 0.045], 0.1),
-        ("Normal", [0.66, 0.045, 0.08, 0.045], 0.01),
-        ("Fast", [0.75, 0.045, 0.07, 0.045], 0.0001),
-    ]
-    self.live_speed_buttons = []
-    for label, rect, delay in preset_specs:
-        button = Button(self.fig.add_axes(rect), label)
-        button.on_clicked(lambda _event, d=delay: self.set_speed_preset(d))
-        self.live_speed_buttons.append(button)
 
 
 

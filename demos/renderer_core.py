@@ -16,6 +16,8 @@ from env.rewards import apply_reward_scheme
 
 from demos import renderer_draw, renderer_ui
 
+FRAME_TIME = 1.0 / 60.0
+
 
 def build_communication_events_from_flags(
     env: GridWorldEnv,
@@ -64,7 +66,6 @@ class LiveEpisodeRenderer:
         self.show_perception = show_perception
         self.show_communication = show_communication
         self.show_resource_animation = show_resource_animation
-        self.speed_delay = 0.001
         self.trail_length = 20
         self.perception_range = 3
         self.communication_growth_rate = 0.18
@@ -560,19 +561,11 @@ class LiveEpisodeRenderer:
         self.text.set_text(f"Episode {episode}/{num_episodes} | Step {step}")
         self.update_hud(hud_state)
         self.fig.canvas.draw_idle()
-        plt.pause(self.get_speed_delay(render_delay))
+        plt.pause(FRAME_TIME)
 
     def refresh(self, render_delay: float) -> None:
         self.fig.canvas.draw_idle()
-        plt.pause(self.get_speed_delay(render_delay))
-
-    def get_speed_delay(self, fallback_delay: float = 0.001) -> float:
-        delay = getattr(self, "speed_delay", fallback_delay)
-        return float(np.clip(delay, 0.0001, 0.1))
-
-    def set_speed_delay(self, delay: float) -> None:
-        self.speed_delay = float(np.clip(delay, 0.0001, 0.1))
-        self._update_speed_status_label()
+        plt.pause(FRAME_TIME)
 
     def close(self) -> None:
         plt.ioff()
@@ -609,9 +602,6 @@ for _name in (
     "_update_agent_contribution_bars",
     "_update_cooperation_lines",
     "_moving_avg",
-    "set_speed_preset",
-    "attach_speed_status_label",
-    "_update_speed_status_label",
     "setup_live_speed_controls",
 ):
     setattr(LiveEpisodeRenderer, _name, getattr(renderer_ui, _name))
@@ -663,10 +653,6 @@ def run_live_training(
         show_communication=show_communication,
         obstacle_value=env.obstacle_value,
     )
-    renderer.set_speed_delay(render_delay)
-    if mode == "live":
-        renderer.setup_live_speed_controls(render_delay)
-
     episode_summaries: List[Dict] = []
     cumulative_resources_run = {agent: 0 for agent in env.agents}
     action_labels = {
