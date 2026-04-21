@@ -13,9 +13,9 @@ from env.utils import (
     save_trajectory_plot,
 )
 
-from testing.ppo_agent import PPOAgent
-from testing.rewards import apply_reward_scheme
-from testing.communication import CommunicationLayer
+from agents.ppo_agent import PPOAgent
+from env.rewards import apply_reward_scheme
+from agents.communication import CommunicationLayer
 from minigames import CaptureFlagGame, GameModeWrapper
 
 

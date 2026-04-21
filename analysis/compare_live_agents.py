@@ -7,14 +7,19 @@ import csv
 import json
 import os
 import sys
+from pathlib import Path
 from typing import Dict, List, Optional
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 import numpy as np
 
 from env.gridworld_env import GridWorldEnv
-from live_renderer import LiveEpisodeRenderer
-from testing.ppo_agent import PPOAgent, TORCH_AVAILABLE
-from testing.rewards import apply_reward_scheme
+from demos.live_renderer import LiveEpisodeRenderer
+from agents.ppo_agent import PPOAgent, TORCH_AVAILABLE
+from env.rewards import apply_reward_scheme
 
 
 ACTION_LABELS = {
@@ -75,7 +80,7 @@ def create_policy_pool(
     if not os.path.exists(checkpoint):
         print("Pretrained checkpoint not found.")
         print("Run pretraining first:")
-        print("python3 train_simple_env.py --num-episodes 5000")
+        print("python3 scripts/train_simple_env.py --num-episodes 5000")
         print(f"Expected checkpoint path: {checkpoint}")
         sys.exit(1)
 

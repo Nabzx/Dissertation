@@ -4,13 +4,19 @@ import argparse
 import csv
 import json
 import os
+import sys
+from pathlib import Path
 from typing import Dict, List
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 import numpy as np
 
 from env.gridworld_env import GridWorldEnv
-from testing.communication import CommunicationLayer
-from testing.ppo_agent import PPOAgent, TORCH_AVAILABLE
+from agents.communication import CommunicationLayer
+from agents.ppo_agent import PPOAgent, TORCH_AVAILABLE
 from train.run_simulation import run_episode
 
 

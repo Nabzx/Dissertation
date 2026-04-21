@@ -1,0 +1,14 @@
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from demos.live_renderer import run_live_training
+
+
+if __name__ == "__main__":
+    run_live_training(num_episodes=5000, render_every=200, render_delay=0.001, fast_mode=False, mode="playback")

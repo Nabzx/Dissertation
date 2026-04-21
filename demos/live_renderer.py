@@ -11,9 +11,9 @@ from matplotlib.widgets import Button, Slider
 
 from env.arena import build_octagon_vertices, compute_octagon_mask
 from env.gridworld_env import GridWorldEnv
-from testing.communication import CommunicationLayer
-from testing.ppo_agent import PPOAgent
-from testing.rewards import apply_reward_scheme
+from agents.communication import CommunicationLayer
+from agents.ppo_agent import PPOAgent
+from env.rewards import apply_reward_scheme
 
 
 class LiveEpisodeRenderer:
@@ -546,7 +546,7 @@ class LiveEpisodeRenderer:
         self.ax_coop.grid(True, color="#e5e7eb", alpha=0.9, linewidth=0.8)
         self.ax_coop.legend(loc="lower right", frameon=False, fontsize=9)
 
-        self.fig.subplots_adjust(left=0.035, right=0.985, top=0.91, bottom=0.18)
+        self.fig.subplots_adjust(left=0.035, right=0.95, top=0.91, bottom=0.18)
         self._update_env(initial_grid)
 
     def _add_figure_background(self) -> None:

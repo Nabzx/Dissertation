@@ -34,14 +34,14 @@ from env.gridworld_env import GridWorldEnv
 # be executed directly via:
 #     python testing/run_testing_experiments.py
 from testing.analysis import mann_whitney_u, multi_seed_summary
-from testing.communication import CommunicationLayer
-from testing.metrics import (
+from agents.communication import CommunicationLayer
+from analysis.metrics import (
     jains_fairness_index,
     resource_utilisation_efficiency,
     spatial_entropy,
 )
-from testing.ppo_agent import PPOAgent, PPOConfig, TORCH_AVAILABLE
-from testing.rewards import apply_reward_scheme
+from agents.ppo_agent import PPOAgent, PPOConfig, TORCH_AVAILABLE
+from env.rewards import apply_reward_scheme
 
 
 @dataclass
