@@ -217,6 +217,7 @@ def run_live_comparison(
         episode_reward = 0.0
         episode_policy_rewards = {policy_type: 0.0 for policy_type in set(assignments.values())}
         episode_policy_resources = {policy_type: 0 for policy_type in set(assignments.values())}
+        episode_policy_comms = {policy_type: 0 for policy_type in set(assignments.values())}
         cumulative_collected = {agent: 0 for agent in env.agents}
 
         if learning_enabled:
@@ -264,6 +265,10 @@ def run_live_comparison(
 
             raw_next_obs, raw_rewards, terminations, truncations, _ = env.step(actions)
             communication_events = build_communication_events_from_flags(env)
+            for event in communication_events:
+                sender_id = env.agent_id_from_value(int(event["sender"]))
+                if sender_id is not None:
+                    episode_policy_comms[assignments[sender_id]] += 1
             for agent_id, reward in raw_rewards.items():
                 if reward > 0.0:
                     cumulative_collected[agent_id] += 1
@@ -356,14 +361,21 @@ def run_live_comparison(
             "resources_collected": resources,
             "policy_rewards": episode_policy_rewards,
             "policy_resources": episode_policy_resources,
+            "policy_comms": episode_policy_comms,
         }
         rows.append(row)
         team_metrics = build_team_metrics(team_agents, resources, max(1, env.step_count), episode_resource_history)
         renderer.update_team_comparison_view(team_metrics, win_counts, build_comparison_summary(team_metrics))
         renderer.refresh(render_delay)
         print(
-            f"Episode {episode + 1}/{num_episodes}: "
-            f"resources={resources}, policy_resources={episode_policy_resources}"
+            f"[Pretrained] ep {episode + 1}: "
+            f"reward={episode_policy_rewards.get('pretrained', 0.0):.2f}, "
+            f"comms={episode_policy_comms.get('pretrained', 0)}"
+        )
+        print(
+            f"[Scratch] ep {episode + 1}: "
+            f"reward={episode_policy_rewards.get('scratch', 0.0):.2f}, "
+            f"comms={episode_policy_comms.get('scratch', 0)}"
         )
 
     write_logs(rows, output_dir)
@@ -425,6 +437,7 @@ def write_logs(rows: List[Dict], output_dir: str) -> None:
         flat["resources_collected"] = json.dumps(row["resources_collected"], sort_keys=True)
         flat["policy_rewards"] = json.dumps(row["policy_rewards"], sort_keys=True)
         flat["policy_resources"] = json.dumps(row["policy_resources"], sort_keys=True)
+        flat["policy_comms"] = json.dumps(row["policy_comms"], sort_keys=True)
         flat_rows.append(flat)
 
     with open(csv_path, "w", newline="") as f:
@@ -438,6 +451,7 @@ def write_logs(rows: List[Dict], output_dir: str) -> None:
                 "resources_collected",
                 "policy_rewards",
                 "policy_resources",
+                "policy_comms",
             ]
         )
         writer = csv.DictWriter(f, fieldnames=fieldnames)

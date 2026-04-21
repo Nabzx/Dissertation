@@ -19,9 +19,8 @@ from env.rewards import apply_reward_scheme
 def build_communication_events_from_flags(
     env: GridWorldEnv,
     previews: Optional[Dict[str, str]] = None,
-    debug: bool = True,
 ) -> List[Dict[str, object]]:
-    events: List[Dict[str, object]] = []
+    comms: List[Dict[str, object]] = []
     flags = getattr(env, "just_communicated", {})
     previews = previews or {}
 
@@ -30,9 +29,7 @@ def build_communication_events_from_flags(
             continue
 
         receiver_id = next((other for other in env.agents if other != agent_id), agent_id)
-        if debug:
-            print(f"Agent {agent_id} communicated")
-        events.append(
+        comms.append(
             {
                 "sender": env.agent_value(agent_id),
                 "receiver": env.agent_value(receiver_id),
@@ -40,7 +37,7 @@ def build_communication_events_from_flags(
             }
         )
 
-    return events
+    return comms
 
 
 class LiveEpisodeRenderer:
@@ -69,7 +66,9 @@ class LiveEpisodeRenderer:
         self.speed_delay = 0.001
         self.trail_length = 20
         self.perception_range = 3
-        self.communication_fade_steps = 3
+        self.communication_growth_rate = 0.18
+        self.communication_fade_rate = 0.08
+        self.communication_start_radius = 0.45
         self.resource_anim_steps = 5
         self.obstacle_value = int(obstacle_value) if obstacle_value is not None else int(np.max(initial_grid))
         self.agent_values = list(range(2, self.obstacle_value))
@@ -1273,8 +1272,17 @@ class LiveEpisodeRenderer:
         if communication_events:
             for event in communication_events:
                 sender = int(event["sender"])
-                if sender in self.communication_state:
-                    self.communication_state[sender]["pulses"].append({"radius": 0.0, "alpha": 0.65})
+                if sender in self.communication_state and sender in positions:
+                    row, col = positions[sender]
+                    pos = (float(col) + 0.5, float(row) + 0.5)
+                    self.communication_state[sender]["pulses"].append(
+                        {
+                            "pos": pos,
+                            "radius": self.communication_start_radius,
+                            "alpha": 0.6,
+                            "age": 0,
+                        }
+                    )
 
         for sender, state in self.communication_state.items():
             patches = self.communication_pulse_patches[sender]
@@ -1284,21 +1292,19 @@ class LiveEpisodeRenderer:
                     patch.set_visible(False)
                 continue
 
-            sender_row, sender_col = positions[sender]
-            sx = float(sender_col) + 0.5
-            sy = float(sender_row) + 0.5
             active_pulses = []
-            for pulse_state in state["pulses"]:
-                pulse_state["radius"] = float(pulse_state["radius"]) + 0.5
-                pulse_state["alpha"] = float(pulse_state["alpha"]) * 0.9
-                if pulse_state["alpha"] > 0.05:
-                    active_pulses.append(pulse_state)
+            for pulse in state["pulses"]:
+                pulse["radius"] = float(pulse["radius"]) + self.communication_growth_rate
+                pulse["alpha"] = float(pulse["alpha"]) - self.communication_fade_rate
+                pulse["age"] = int(pulse["age"]) + 1
+                if pulse["alpha"] > 0:
+                    active_pulses.append(pulse)
             state["pulses"] = active_pulses[-len(patches):]
 
-            for patch, pulse_state in zip(patches, state["pulses"]):
-                patch.center = (sx, sy)
-                patch.set_radius(float(pulse_state["radius"]))
-                patch.set_alpha(float(pulse_state["alpha"]))
+            for patch, pulse in zip(patches, state["pulses"]):
+                patch.center = pulse["pos"]
+                patch.set_radius(float(pulse["radius"]))
+                patch.set_alpha(float(pulse["alpha"]))
                 patch.set_visible(True)
             for patch in patches[len(state["pulses"]):]:
                 patch.set_visible(False)
@@ -1886,6 +1892,7 @@ def run_live_training(
             ppo_agent.reset_buffer()
         cumulative_collected: Dict[str, int] = {agent: 0 for agent in env.agents}
         total_shaped_reward = 0.0
+        n_comms = 0
 
         if render_episode:
             renderer.reset_communication_visuals()
@@ -1949,17 +1956,21 @@ def run_live_training(
                         trajectory_id=agent_id,
                     )
 
+            flags = getattr(env, "just_communicated", {})
+            active_agents = [agent for agent in env.agents if flags.get(agent, False)]
             communication_events: Optional[List[Dict[str, object]]] = None
             if comm_layer is not None:
-                sent_messages = comm_layer.update_messages_after_step()
-                obs = comm_layer.build_augment_observation(raw_next_obs)
                 previews: Dict[str, str] = {}
-                for sender_id, msg in sent_messages.items():
-                    previews[sender_id] = f"{int(msg[1]):+d},{int(msg[2]):+d},{int(msg[3])}"
+                if active_agents:
+                    sent_messages = comm_layer.update_messages_after_step(active_agents)
+                    for sender_id, msg in sent_messages.items():
+                        previews[sender_id] = f"{int(msg[1]):+d},{int(msg[2]):+d},{int(msg[3])}"
+                obs = comm_layer.build_augment_observation(raw_next_obs)
                 communication_events = build_communication_events_from_flags(env, previews=previews)
             else:
                 obs = raw_next_obs
                 communication_events = build_communication_events_from_flags(env)
+            n_comms += len(communication_events)
 
             if render_episode:
                 renderer.update(
@@ -2005,6 +2016,7 @@ def run_live_training(
             "ppo_metrics": ppo_metrics,
             "steps": env.step_count,
             "history": episode_history,
+            "comms": n_comms,
         }
 
     for episode in range(num_episodes):
@@ -2018,6 +2030,7 @@ def run_live_training(
         total_resources = episode_result["total_resources"]
         total_shaped_reward = episode_result["total_reward"]
         ppo_metrics = episode_result["ppo_metrics"]
+        n_comms = episode_result["comms"]
 
         episode_summary = {
             "episode_num": episode,
@@ -2025,6 +2038,7 @@ def run_live_training(
             "total_reward": total_shaped_reward,
             "steps": episode_result["steps"],
             "ppo_metrics": ppo_metrics,
+            "comms": n_comms,
         }
         episode_summaries.append(episode_summary)
         history.append(episode_result["history"])
@@ -2034,25 +2048,7 @@ def run_live_training(
         renderer.update_ppo_plot(ppo_metrics)
         renderer.refresh(render_delay)
 
-        print(
-            f"Episode {episode + 1}: "
-            f"resources collected={resources}, total reward={total_shaped_reward:.2f}, "
-            f"policy_loss={ppo_metrics.get('policy_loss', 0.0):.4f}, "
-            f"value_loss={ppo_metrics.get('value_loss', 0.0):.4f}, "
-            f"entropy={ppo_metrics.get('entropy', 0.0):.4f}, "
-            f"mean_reward={ppo_metrics.get('mean_reward', 0.0):.4f}"
-        )
-
-        if (episode + 1) % 100 == 0:
-            print(f"Completed {episode + 1}/{num_episodes} episodes")
-
-        if (episode + 1) % 10 == 0:
-            avg_reward = float(np.mean(recent_rewards[-10:]))
-            avg_resources = float(np.mean(recent_resources[-10:]))
-            print(
-                f"Average over episodes {episode - 8}-{episode + 1}: "
-                f"resources={avg_resources:.2f}, reward={avg_reward:.2f}"
-            )
+        print(f"Episode {episode + 1} | reward: {total_shaped_reward:.2f} | comms: {n_comms}")
 
     if mode == "playback":
         PlaybackController(renderer, history, episode_summaries).run()
