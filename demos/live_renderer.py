@@ -449,9 +449,8 @@ class LiveEpisodeRenderer:
 
         self.episode_rewards: List[float] = []
         self.episode_resources: List[float] = []
-        self.policy_losses: List[float] = []
         self.value_losses: List[float] = []
-        self.entropy_values: List[float] = []
+        self.episode_entropy: List[float] = []
         self.gradient_norms: List[float] = []
         self.fairness_values: List[float] = []
         self.balance_values: List[float] = []
@@ -470,35 +469,20 @@ class LiveEpisodeRenderer:
         self.ax_plot.grid(True, color="#9ca3af", alpha=0.2, linewidth=0.8)
         self.ax_plot.legend(loc="upper left", frameon=False, fontsize=9)
 
-        self.policy_line, = self.ax_ppo.plot(
-            [],
-            [],
-            color="#dc2626",
-            linewidth=2.2,
-            label="Policy Loss (PPO)",
-        )
-        self.ax_entropy = self.ax_ppo.twinx()
-        self.ax_entropy.set_facecolor("#ffffff")
-        self.entropy_line, = self.ax_entropy.plot(
+        self.entropy_line, = self.ax_ppo.plot(
             [],
             [],
             color="#7c3aed",
             linewidth=2.2,
-            label="Entropy (Exploration)",
+            label="Policy Entropy Avg (50)",
         )
         self.ax_ppo.set_xlim(0, max(1, num_episodes))
-        self._style_ui_axis(self.ax_ppo, "PPO Training Dynamics")
+        self._style_ui_axis(self.ax_ppo, "Exploration Behaviour")
         self.ax_ppo.set_xlabel("Episode")
-        self.ax_ppo.set_ylabel("Policy Loss", color="#f5f5f5")
-        self.ax_ppo.tick_params(axis="y", labelcolor="#dc2626")
+        self.ax_ppo.set_ylabel("Policy Entropy")
         self.ax_ppo.grid(True, color="#9ca3af", alpha=0.2, linewidth=0.8)
-        self.ax_entropy.set_ylabel("Entropy", color="#f5f5f5")
-        self.ax_entropy.tick_params(axis="y", labelcolor="#7c3aed")
-        self.ax_ppo.set_ylim(-1.0, 2.0)
-        self.ax_entropy.set_ylim(0.0, 2.0)
-        self.ax_entropy.spines["right"].set_color("#bbbbbb")
-        ppo_handles = [self.policy_line, self.entropy_line]
-        self.ax_ppo.legend(ppo_handles, [line.get_label() for line in ppo_handles], loc="upper right", frameon=False, fontsize=9)
+        self.ax_ppo.set_ylim(0.0, 2.0)
+        self.ax_ppo.legend(loc="upper right", frameon=False, fontsize=9)
 
         self.value_line, = self.ax_opt.plot(
             [],
@@ -1190,27 +1174,27 @@ class LiveEpisodeRenderer:
     def update_ppo_plot(self, ppo_metrics: Optional[Dict[str, float]]) -> None:
         if not ppo_metrics:
             ppo_metrics = {}
-        self.policy_losses.append(float(ppo_metrics.get("policy_loss", 0.0)))
         self.value_losses.append(float(ppo_metrics.get("value_loss", 0.0)))
-        self.entropy_values.append(float(ppo_metrics.get("entropy", 0.0)))
+        self.episode_entropy.append(float(ppo_metrics.get("entropy", 0.0)))
         self.gradient_norms.append(float(ppo_metrics.get("grad_norm", ppo_metrics.get("gradient_norm", np.nan))))
-        if len(self.policy_losses) % self.plot_update_every != 0:
+
+        entropy_x_vals = list(range(len(self.episode_entropy)))
+        smoothed_entropy = self._moving_avg(self.episode_entropy, 50)
+        plot_entropy_x = entropy_x_vals[:: self.plot_downsample] or entropy_x_vals[-1:]
+        plot_entropy = smoothed_entropy[:: self.plot_downsample] or smoothed_entropy[-1:]
+        self.entropy_line.set_data(plot_entropy_x, plot_entropy)
+
+        if len(self.value_losses) % self.plot_update_every != 0:
             return
 
-        x_vals = list(range(len(self.policy_losses)))
-        policy_smoothed = self._moving_avg(self.policy_losses, self.smoothing_window)
-        entropy_smoothed = self._moving_avg(self.entropy_values, self.smoothing_window)
+        x_vals = list(range(len(self.value_losses)))
         value_smoothed = self._moving_avg(self.value_losses, self.smoothing_window)
         grad_smoothed = self._moving_avg_skip_nan(self.gradient_norms, self.smoothing_window)
 
         plot_x = x_vals[:: self.plot_downsample] or x_vals[-1:]
-        plot_policy = policy_smoothed[:: self.plot_downsample] or policy_smoothed[-1:]
-        plot_entropy = entropy_smoothed[:: self.plot_downsample] or entropy_smoothed[-1:]
         plot_value = value_smoothed[:: self.plot_downsample] or value_smoothed[-1:]
         plot_grad = grad_smoothed[:: self.plot_downsample] or grad_smoothed[-1:]
 
-        self.policy_line.set_data(plot_x, plot_policy)
-        self.entropy_line.set_data(plot_x, plot_entropy)
         self.value_line.set_data(plot_x, plot_value)
         self.grad_line.set_data(plot_x, plot_grad)
         self.ax_opt.relim()
