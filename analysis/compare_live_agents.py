@@ -17,7 +17,7 @@ if str(PROJECT_ROOT) not in sys.path:
 import numpy as np
 
 from env.gridworld_env import GridWorldEnv
-from demos.live_renderer import LiveEpisodeRenderer
+from demos.live_renderer import LiveEpisodeRenderer, build_communication_events_from_flags
 from agents.ppo_agent import PPOAgent, TORCH_AVAILABLE
 from env.rewards import apply_reward_scheme
 
@@ -199,7 +199,7 @@ def run_live_comparison(
         max_resources=max(env.max_resources, num_resources),
         view_size=env.view_size,
         show_perception=True,
-        show_communication=False,
+        show_communication=True,
         obstacle_value=env.obstacle_value,
         agent_styles=agent_styles,
     )
@@ -263,6 +263,7 @@ def run_live_comparison(
                 }
 
             raw_next_obs, raw_rewards, terminations, truncations, _ = env.step(actions)
+            communication_events = build_communication_events_from_flags(env)
             for agent_id, reward in raw_rewards.items():
                 if reward > 0.0:
                     cumulative_collected[agent_id] += 1
@@ -308,6 +309,7 @@ def run_live_comparison(
                 step + 1,
                 render_delay,
                 actions=actions,
+                communication_events=communication_events,
                 hud_state=build_hud_state(
                     env,
                     assignments,
@@ -318,6 +320,7 @@ def run_live_comparison(
                     episode_reward,
                     actions,
                     learning_enabled,
+                    communication_events,
                 ),
             )
 
@@ -378,8 +381,13 @@ def build_hud_state(
     episode_reward: float,
     actions: Optional[Dict[str, int]],
     learning_enabled: bool,
+    communication_events: Optional[List[Dict[str, object]]] = None,
 ) -> Dict[str, object]:
     resources_now = env.get_resources_collected()
+    communicating_agents = set()
+    if communication_events:
+        for event in communication_events:
+            communicating_agents.add(env.agent_id_from_value(int(event["sender"])))
     agents_state = {}
     for agent_id in env.agents:
         agents_state[agent_id] = {
@@ -387,7 +395,7 @@ def build_hud_state(
             "cumulative_resources": cumulative_resources.get(agent_id, 0) + resources_now.get(agent_id, 0),
             "position": env.agent_positions.get(agent_id, ("-", "-")),
             "facing": "live",
-            "communication": "disabled",
+            "communication": "sending" if agent_id in communicating_agents else "idle",
             "agent_type": assignments[agent_id],
             "recent_action": ACTION_LABELS.get(actions.get(agent_id, 0), "n/a") if actions else "n/a",
         }

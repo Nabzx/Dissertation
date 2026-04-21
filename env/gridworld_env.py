@@ -50,6 +50,7 @@ class GridWorldEnv(ParallelEnv):
 
         self.grid = None
         self.agent_positions = {}
+        self.just_communicated = {agent: False for agent in self.agents}
         self.resource_positions = []
         self.newly_spawned_resources = []
         self.obstacle_positions = []
@@ -98,6 +99,7 @@ class GridWorldEnv(ParallelEnv):
             obstacle_count += 1
 
         self.agent_positions = {}
+        self.just_communicated = {agent: False for agent in self.agents}
         for agent in self.agents:
             pos = self._sample_empty_arena_cell(exclude=set(self.agent_positions.values()))
             self.agent_positions[agent] = pos
@@ -122,6 +124,8 @@ class GridWorldEnv(ParallelEnv):
         return self._get_obs(), {agent: {} for agent in self.agents}
 
     def step(self, actions: Dict[str, int]):
+        self.reset_communication_flags()
+
         for agent in self.agents:
             pos = self.agent_positions[agent]
             if self.is_agent_value(self.grid[pos[0], pos[1]]):
@@ -145,11 +149,14 @@ class GridWorldEnv(ParallelEnv):
             if new_pos in self.resource_positions:
                 rewards[agent] = 1.0
                 self.resources_collected[agent] += 1
+                self.just_communicated[agent] = True
                 self.resource_positions.remove(new_pos)
                 if self.grid[new_pos[0], new_pos[1]] == self.resource_value:
                     self.grid[new_pos[0], new_pos[1]] = 0
             else:
                 rewards[agent] = 0.0
+
+        self.mark_proximity_communication()
 
         for agent in self.agents:
             pos = self.agent_positions[agent]
@@ -271,3 +278,22 @@ class GridWorldEnv(ParallelEnv):
 
     def get_initial_resource_positions(self) -> List[Tuple[int, int]]:
         return self.initial_resource_positions.copy()
+
+    def reset_communication_flags(self) -> None:
+        self.just_communicated = {agent: False for agent in self.agents}
+
+    def mark_proximity_communication(self, max_distance: int = 3) -> None:
+        for agent in self.agents:
+            agent_pos = self.agent_positions.get(agent)
+            if agent_pos is None:
+                continue
+            for other in self.agents:
+                if other == agent:
+                    continue
+                other_pos = self.agent_positions.get(other)
+                if other_pos is None:
+                    continue
+                distance = abs(agent_pos[0] - other_pos[0]) + abs(agent_pos[1] - other_pos[1])
+                if distance < max_distance:
+                    self.just_communicated[agent] = True
+                    self.just_communicated[other] = True

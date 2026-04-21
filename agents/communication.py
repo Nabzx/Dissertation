@@ -163,6 +163,8 @@ class CommunicationLayer:
                 previous_msg = self.state.last_messages.get(other)
                 if previous_msg is None or not np.array_equal(previous_msg, new_messages[agent]):
                     changed_messages[agent] = new_messages[agent].copy()
+                    if hasattr(self.env, "just_communicated"):
+                        self.env.just_communicated[agent] = True
                 self.state.last_messages[other] = new_messages[agent].copy()
 
         return changed_messages

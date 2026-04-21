@@ -4,6 +4,7 @@ import numpy as np
 class HeuristicAgent:
     def __init__(self, agent_id: str):
         self.agent_id = agent_id
+        self.just_communicated = False
         try:
             self.agent_value = 2 + int(agent_id.split("_")[-1])
         except (ValueError, IndexError):

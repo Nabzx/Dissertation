@@ -16,6 +16,33 @@ from agents.ppo_agent import PPOAgent
 from env.rewards import apply_reward_scheme
 
 
+def build_communication_events_from_flags(
+    env: GridWorldEnv,
+    previews: Optional[Dict[str, str]] = None,
+    debug: bool = True,
+) -> List[Dict[str, object]]:
+    events: List[Dict[str, object]] = []
+    flags = getattr(env, "just_communicated", {})
+    previews = previews or {}
+
+    for agent_id in env.agents:
+        if not flags.get(agent_id, False):
+            continue
+
+        receiver_id = next((other for other in env.agents if other != agent_id), agent_id)
+        if debug:
+            print(f"Agent {agent_id} communicated")
+        events.append(
+            {
+                "sender": env.agent_value(agent_id),
+                "receiver": env.agent_value(receiver_id),
+                "preview": previews.get(agent_id, "proximity"),
+            }
+        )
+
+    return events
+
+
 class LiveEpisodeRenderer:
     def __init__(
         self,
@@ -1922,23 +1949,17 @@ def run_live_training(
                         trajectory_id=agent_id,
                     )
 
-            communication_events = None
+            communication_events: Optional[List[Dict[str, object]]] = None
             if comm_layer is not None:
                 sent_messages = comm_layer.update_messages_after_step()
                 obs = comm_layer.build_augment_observation(raw_next_obs)
-                communication_events = []
+                previews: Dict[str, str] = {}
                 for sender_id, msg in sent_messages.items():
-                    receiver_id = next(agent for agent in env.agents if agent != sender_id)
-                    preview = f"{int(msg[1]):+d},{int(msg[2]):+d},{int(msg[3])}"
-                    communication_events.append(
-                        {
-                            "sender": env.agent_value(sender_id),
-                            "receiver": env.agent_value(receiver_id),
-                            "preview": preview,
-                        }
-                    )
+                    previews[sender_id] = f"{int(msg[1]):+d},{int(msg[2]):+d},{int(msg[3])}"
+                communication_events = build_communication_events_from_flags(env, previews=previews)
             else:
                 obs = raw_next_obs
+                communication_events = build_communication_events_from_flags(env)
 
             if render_episode:
                 renderer.update(

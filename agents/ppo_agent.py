@@ -65,6 +65,7 @@ class PPOAgent:
         self.obs_dim = obs_dim
         self.n_actions = n_actions
         self.config = config or PPOConfig()
+        self.just_communicated = False
 
         self.device = device
         if TORCH_AVAILABLE:
