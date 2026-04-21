@@ -450,8 +450,7 @@ class LiveEpisodeRenderer:
         self.episode_rewards: List[float] = []
         self.episode_resources: List[float] = []
         self.episode_entropy: List[float] = []
-        self.fairness_values: List[float] = []
-        self.episode_inequality: List[float] = []
+        self.episode_cooperation: List[float] = []
         self.episode_shares: Dict[str, List[float]] = {
             self._agent_id(agent_value): [] for agent_value in self.agent_values
         }
@@ -468,7 +467,7 @@ class LiveEpisodeRenderer:
         self.ax_plot.set_xlabel("Episode")
         self.ax_plot.set_ylabel("Resources Collected (Smoothed)")
         self.ax_plot.grid(True, color="#9ca3af", alpha=0.2, linewidth=0.8)
-        self.ax_plot.legend(loc="upper left", frameon=False, fontsize=9)
+        self.ax_plot.legend(loc="upper right", framealpha=0.9, fontsize=9)
 
         self.entropy_line, = self.ax_ppo.plot(
             [],
@@ -483,7 +482,7 @@ class LiveEpisodeRenderer:
         self.ax_ppo.set_ylabel("Policy Entropy")
         self.ax_ppo.grid(True, color="#9ca3af", alpha=0.2, linewidth=0.8)
         self.ax_ppo.set_ylim(0.0, 2.0)
-        self.ax_ppo.legend(loc="upper right", frameon=False, fontsize=9)
+        self.ax_ppo.legend(loc="upper right", framealpha=0.9, fontsize=9)
 
         self.share_agent_ids = [self._agent_id(agent_value) for agent_value in self.agent_values]
         self.share_colours = [self._agent_colour(agent_value) for agent_value in self.agent_values]
@@ -499,28 +498,22 @@ class LiveEpisodeRenderer:
         self.ax_opt.set_ylabel("Share of Total Resources")
         self.ax_opt.set_ylim(0.0, 1.0)
         self.ax_opt.grid(True, color="#9ca3af", alpha=0.2, linewidth=0.8)
-        self.ax_opt.legend(handles=share_legend_handles, loc="upper right", frameon=False, fontsize=8.5)
+        self.ax_opt.legend(handles=share_legend_handles, loc="upper right", framealpha=0.9, fontsize=8.5)
 
-        self.fairness_line, = self.ax_coop.plot(
+        self.cooperation_line, = self.ax_coop.plot(
             [],
             [],
             color="#0f766e",
             linewidth=2.2,
-            label="Jain Fairness Avg (50)",
-        )
-        self.inequality_line, = self.ax_coop.plot(
-            [],
-            [],
-            color="#9333ea",
-            linewidth=2.0,
-            label="Inequality Avg (50)",
+            label="Cooperation Avg (50)",
         )
         self.ax_coop.set_xlim(0, max(1, num_episodes))
-        self._style_ui_axis(self.ax_coop, "Cooperation & Fairness")
+        self.ax_coop.set_ylim(0.0, 1.0)
+        self._style_ui_axis(self.ax_coop, "Cooperation Score")
         self.ax_coop.set_xlabel("Episode")
-        self.ax_coop.set_ylabel("Metric Value")
+        self.ax_coop.set_ylabel("Cooperation Level")
         self.ax_coop.grid(True, color="#9ca3af", alpha=0.2, linewidth=0.8)
-        self.ax_coop.legend(loc="lower right", frameon=False, fontsize=9)
+        self.ax_coop.legend(loc="upper right", framealpha=0.9, fontsize=9)
 
         self.fig.subplots_adjust(left=0.035, right=0.95, top=0.91, bottom=0.18)
         self._shift_environment_axis_right()
@@ -1180,21 +1173,18 @@ class LiveEpisodeRenderer:
 
     def _append_cooperation_metrics(self, per_agent_resources: Optional[Dict[str, float]]) -> None:
         if not per_agent_resources:
-            self.fairness_values.append(np.nan)
-            self.episode_inequality.append(np.nan)
+            self.episode_cooperation.append(0.0)
             return
 
         values = np.array(list(per_agent_resources.values()), dtype=float)
-        total = float(np.sum(values))
-        squared_sum = float(np.sum(values**2))
-        if len(values) == 0 or squared_sum <= 0.0:
-            fairness = np.nan
+        mean = float(np.mean(values)) if len(values) > 0 else 0.0
+        std = float(np.std(values)) if len(values) > 0 else 0.0
+        if mean > 0.0:
+            cooperation_score = 1.0 - (std / mean)
         else:
-            fairness = float((total**2) / (len(values) * squared_sum))
-        inequality = float(np.std(values)) if len(values) > 0 else np.nan
+            cooperation_score = 0.0
 
-        self.fairness_values.append(fairness)
-        self.episode_inequality.append(inequality)
+        self.episode_cooperation.append(float(np.clip(cooperation_score, 0.0, 1.0)))
 
     def _append_agent_shares(self, per_agent_resources: Optional[Dict[str, float]]) -> None:
         resources = per_agent_resources or {}
@@ -1231,19 +1221,12 @@ class LiveEpisodeRenderer:
         )
 
     def _update_cooperation_lines(self, x_vals: List[int]) -> None:
-        fairness_smoothed = self._moving_avg_skip_nan(self.fairness_values, self.smoothing_window)
-        inequality_smoothed = self._moving_avg_skip_nan(self.episode_inequality, self.smoothing_window)
+        smoothed_cooperation = self._moving_avg(self.episode_cooperation, 50)
 
         plot_x = x_vals[:: self.plot_downsample] or x_vals[-1:]
-        plot_fairness = fairness_smoothed[:: self.plot_downsample] or fairness_smoothed[-1:]
-        plot_inequality = inequality_smoothed[:: self.plot_downsample] or inequality_smoothed[-1:]
+        plot_cooperation = smoothed_cooperation[:: self.plot_downsample] or smoothed_cooperation[-1:]
 
-        self.fairness_line.set_data(plot_x, plot_fairness)
-        self.inequality_line.set_data(plot_x, plot_inequality)
-        self.ax_coop.relim()
-        self.ax_coop.autoscale_view(scalex=False, scaley=True)
-        _, top = self.ax_coop.get_ylim()
-        self.ax_coop.set_ylim(0.0, max(1.05, top))
+        self.cooperation_line.set_data(plot_x, plot_cooperation)
 
     def _moving_avg(self, values: List[float], window: int) -> List[float]:
         return [
