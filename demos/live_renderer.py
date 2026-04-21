@@ -449,11 +449,12 @@ class LiveEpisodeRenderer:
 
         self.episode_rewards: List[float] = []
         self.episode_resources: List[float] = []
-        self.value_losses: List[float] = []
         self.episode_entropy: List[float] = []
-        self.gradient_norms: List[float] = []
         self.fairness_values: List[float] = []
         self.balance_values: List[float] = []
+        self.episode_shares: Dict[str, List[float]] = {
+            self._agent_id(agent_value): [] for agent_value in self.agent_values
+        }
         self.resource_line, = self.ax_plot.plot(
             [],
             [],
@@ -484,27 +485,24 @@ class LiveEpisodeRenderer:
         self.ax_ppo.set_ylim(0.0, 2.0)
         self.ax_ppo.legend(loc="upper right", frameon=False, fontsize=9)
 
-        self.value_line, = self.ax_opt.plot(
-            [],
-            [],
-            color="#ea580c",
-            linewidth=2.2,
-            label="Value Loss Avg (50)",
-        )
-        self.grad_line, = self.ax_opt.plot(
-            [],
-            [],
-            color="#0891b2",
-            linewidth=2.0,
-            linestyle="--",
-            label="Grad Norm Avg (50)",
-        )
+        self.share_lines = {}
+        for agent_value in self.agent_values:
+            agent_id = self._agent_id(agent_value)
+            agent_idx = self._agent_index(agent_value)
+            self.share_lines[agent_id], = self.ax_opt.plot(
+                [],
+                [],
+                color=self._agent_colour(agent_value),
+                linewidth=2.0,
+                label=f"Agent {agent_idx}",
+            )
         self.ax_opt.set_xlim(0, max(1, num_episodes))
-        self._style_ui_axis(self.ax_opt, "PPO Optimisation Signals")
+        self._style_ui_axis(self.ax_opt, "Agent Contribution Share")
         self.ax_opt.set_xlabel("Episode")
-        self.ax_opt.set_ylabel("Loss Value")
+        self.ax_opt.set_ylabel("Share of Total Resources")
+        self.ax_opt.set_ylim(0.0, 1.0)
         self.ax_opt.grid(True, color="#9ca3af", alpha=0.2, linewidth=0.8)
-        self.ax_opt.legend(loc="upper right", frameon=False, fontsize=9)
+        self.ax_opt.legend(loc="upper right", frameon=False, fontsize=8.5)
 
         self.fairness_line, = self.ax_coop.plot(
             [],
@@ -1159,6 +1157,8 @@ class LiveEpisodeRenderer:
         self.episode_rewards.append(float(total_reward))
         self.episode_resources.append(float(total_resources))
         self._append_cooperation_metrics(per_agent_resources)
+        self._append_agent_shares(per_agent_resources)
+        self._update_agent_share_lines()
         if len(self.episode_resources) % self.plot_update_every != 0:
             return
 
@@ -1174,31 +1174,13 @@ class LiveEpisodeRenderer:
     def update_ppo_plot(self, ppo_metrics: Optional[Dict[str, float]]) -> None:
         if not ppo_metrics:
             ppo_metrics = {}
-        self.value_losses.append(float(ppo_metrics.get("value_loss", 0.0)))
         self.episode_entropy.append(float(ppo_metrics.get("entropy", 0.0)))
-        self.gradient_norms.append(float(ppo_metrics.get("grad_norm", ppo_metrics.get("gradient_norm", np.nan))))
 
         entropy_x_vals = list(range(len(self.episode_entropy)))
         smoothed_entropy = self._moving_avg(self.episode_entropy, 50)
         plot_entropy_x = entropy_x_vals[:: self.plot_downsample] or entropy_x_vals[-1:]
         plot_entropy = smoothed_entropy[:: self.plot_downsample] or smoothed_entropy[-1:]
         self.entropy_line.set_data(plot_entropy_x, plot_entropy)
-
-        if len(self.value_losses) % self.plot_update_every != 0:
-            return
-
-        x_vals = list(range(len(self.value_losses)))
-        value_smoothed = self._moving_avg(self.value_losses, self.smoothing_window)
-        grad_smoothed = self._moving_avg_skip_nan(self.gradient_norms, self.smoothing_window)
-
-        plot_x = x_vals[:: self.plot_downsample] or x_vals[-1:]
-        plot_value = value_smoothed[:: self.plot_downsample] or value_smoothed[-1:]
-        plot_grad = grad_smoothed[:: self.plot_downsample] or grad_smoothed[-1:]
-
-        self.value_line.set_data(plot_x, plot_value)
-        self.grad_line.set_data(plot_x, plot_grad)
-        self.ax_opt.relim()
-        self.ax_opt.autoscale_view(scalex=False, scaley=True)
 
     def _append_cooperation_metrics(self, per_agent_resources: Optional[Dict[str, float]]) -> None:
         if not per_agent_resources:
@@ -1219,6 +1201,30 @@ class LiveEpisodeRenderer:
 
         self.fairness_values.append(fairness)
         self.balance_values.append(balance)
+
+    def _append_agent_shares(self, per_agent_resources: Optional[Dict[str, float]]) -> None:
+        resources = per_agent_resources or {}
+        total = float(sum(float(resources.get(agent_id, 0.0)) for agent_id in self.episode_shares))
+        for agent_id, shares in self.episode_shares.items():
+            if total > 0.0:
+                share = float(resources.get(agent_id, 0.0)) / total
+            else:
+                share = 0.0
+            shares.append(share)
+
+    def _update_agent_share_lines(self) -> None:
+        if not self.episode_shares:
+            return
+        episode_count = max((len(shares) for shares in self.episode_shares.values()), default=0)
+        if episode_count == 0:
+            return
+
+        x_vals = list(range(episode_count))
+        plot_x = x_vals[:: self.plot_downsample] or x_vals[-1:]
+        for agent_id, line in self.share_lines.items():
+            smoothed_share = self._moving_avg(self.episode_shares[agent_id], 50)
+            plot_share = smoothed_share[:: self.plot_downsample] or smoothed_share[-1:]
+            line.set_data(plot_x, plot_share)
 
     def _update_cooperation_lines(self, x_vals: List[int]) -> None:
         fairness_smoothed = self._moving_avg_skip_nan(self.fairness_values, self.smoothing_window)
