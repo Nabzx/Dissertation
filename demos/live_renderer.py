@@ -109,7 +109,7 @@ class LiveEpisodeRenderer:
         self.resource_collect_state: Dict[tuple[int, int], int] = {}
 
         plt.ion()
-        self.figure_bg = "#2a1d0c"
+        self.figure_bg = "#c2a476"
         self.fig = plt.figure(figsize=(18.0, 8.4), facecolor=self.figure_bg)
         self.fig.patch.set_facecolor(self.figure_bg)
         self._add_figure_background()
@@ -479,7 +479,7 @@ class LiveEpisodeRenderer:
             label="Policy Loss (PPO)",
         )
         self.ax_entropy = self.ax_ppo.twinx()
-        self.ax_entropy.set_facecolor("white")
+        self.ax_entropy.set_facecolor("#f7f7f7")
         self.entropy_line, = self.ax_entropy.plot(
             [],
             [],
@@ -560,8 +560,8 @@ class LiveEpisodeRenderer:
         y_grad = np.linspace(0.0, 1.0, 180)
         gradient = np.outer(y_grad, x_grad)
         base = np.ones((180, 320, 3))
-        warm = np.array([230, 211, 163], dtype=float) / 255.0
-        shadow = np.array([207, 187, 139], dtype=float) / 255.0
+        warm = np.array([194, 164, 118], dtype=float) / 255.0
+        shadow = np.array([194, 164, 118], dtype=float) / 255.0
         base[:] = warm
         base = base * (1.0 - 0.38 * gradient[..., None]) + shadow * (0.38 * gradient[..., None])
         bg_axis.imshow(base, aspect="auto", extent=(0, 1, 0, 1), origin="lower")
@@ -588,8 +588,8 @@ class LiveEpisodeRenderer:
         return self.agent_values[(idx + 1) % len(self.agent_values)]
 
     def _style_ui_axis(self, axis, title: str) -> None:
-        axis.set_facecolor("white")
-        axis.set_title(title, color="#111827", fontsize=11.5, fontweight="bold", pad=9)
+        axis.set_facecolor("#f7f7f7")
+        axis.set_title(title, color="#1a1a1a", fontsize=11.5, fontweight="bold", pad=9)
         axis.tick_params(colors="#374151", labelsize=8.5)
         axis.xaxis.label.set_color("#111827")
         axis.yaxis.label.set_color("#111827")
