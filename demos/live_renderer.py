@@ -610,16 +610,16 @@ class LiveEpisodeRenderer:
             )
         )
         self.hud_phase_text = self.ax_hud.text(
-            0.1, 0.845, "", color="#f8fafc", fontsize=9.4, fontweight="bold", va="top"
+            0.1, 0.842, "", color="#f8fafc", fontsize=9.0, fontweight="bold", va="top"
         )
         self.hud_episode_text = self.ax_hud.text(
-            0.1, 0.798, "", color="#cbd5e1", fontsize=8.2, va="top"
+            0.1, 0.802, "", color="#cbd5e1", fontsize=7.9, va="top"
         )
         self.hud_step_text = self.ax_hud.text(
-            0.1, 0.758, "", color="#cbd5e1", fontsize=8.2, va="top"
+            0.1, 0.768, "", color="#cbd5e1", fontsize=7.9, va="top"
         )
         self.hud_reward_text = self.ax_hud.text(
-            0.1, 0.718, "", color="#cbd5e1", fontsize=8.2, va="top"
+            0.1, 0.734, "", color="#cbd5e1", fontsize=7.9, va="top"
         )
 
         self.hud_agent_text = {}
@@ -676,7 +676,6 @@ class LiveEpisodeRenderer:
         self.comparison_team_specs = team_specs
         panel_bg = "#1e1e1e"
         panel_edge = "#4b5563"
-        card_bg = "#252525"
         muted_text = "#a3a3a3"
         main_text = "#f5f5f5"
         for axis in (self.ax_plot, self.ax_ppo, self.ax_opt, self.ax_coop):
@@ -691,15 +690,19 @@ class LiveEpisodeRenderer:
         for axis, spec in zip((self.ax_plot, self.ax_ppo), team_specs):
             team_key = str(spec["key"])
             team_color = str(spec["color"])
+            box_x = 0.035
+            box_y = 0.055
+            box_width = 0.93
+            box_height = 0.88
             axis.set_xlim(0, 1)
             axis.set_ylim(0, 1)
             axis.set_xticks([])
             axis.set_yticks([])
             axis.add_patch(
                 FancyBboxPatch(
-                    (0.035, 0.055),
-                    0.93,
-                    0.88,
+                    (box_x, box_y),
+                    box_width,
+                    box_height,
                     boxstyle="round,pad=0.018,rounding_size=0.035",
                     transform=axis.transAxes,
                     facecolor=panel_bg,
@@ -709,54 +712,45 @@ class LiveEpisodeRenderer:
                 )
             )
             axis.text(
-                0.08,
-                0.875,
+                box_x + 0.055,
+                box_y + box_height * 0.915,
                 str(spec["title"]),
                 color=team_color,
-                fontsize=13.2,
+                fontsize=11.2,
                 fontweight="bold",
                 va="top",
                 zorder=2,
             )
             self.comparison_metric_values[team_key] = {}
+            text_x = box_x + 0.065
+            base_y = box_y + box_height * 0.72
             metric_specs = [
-                ("total_resources", "TOTAL RESOURCES"),
-                ("average_per_agent", "AVERAGE PER AGENT"),
-                ("efficiency", "EFFICIENCY"),
+                ("total_resources", "TOTAL", base_y, base_y - 0.07),
+                ("average_per_agent", "AVG / AGENT", base_y - 0.16, base_y - 0.23),
+                ("efficiency", "EFFICIENCY", base_y - 0.32, base_y - 0.39),
             ]
-            for idx, (metric_key, label) in enumerate(metric_specs):
-                y = 0.62 - idx * 0.19
-                axis.add_patch(
-                    FancyBboxPatch(
-                        (0.08, y),
-                        0.84,
-                        0.135,
-                        boxstyle="round,pad=0.012,rounding_size=0.025",
-                        transform=axis.transAxes,
-                        facecolor=card_bg,
-                        edgecolor="#3f3f46",
-                        linewidth=0.8,
-                        zorder=0.4,
-                    )
-                )
+            for metric_key, label, label_y, value_y in metric_specs:
                 axis.text(
-                    0.12,
-                    y + 0.095,
+                    text_x,
+                    label_y,
                     label,
-                    color=muted_text,
-                    fontsize=7.6,
-                    fontweight="bold",
+                    color=main_text,
+                    alpha=0.6,
+                    fontsize=9,
+                    fontweight="medium",
+                    ha="left",
                     va="top",
                     zorder=2,
                 )
                 self.comparison_metric_values[team_key][metric_key] = axis.text(
-                    0.12,
-                    y + 0.035,
+                    text_x,
+                    value_y,
                     "0",
                     color=main_text,
-                    fontsize=15.5,
+                    fontsize=11,
                     fontweight="bold",
-                    va="bottom",
+                    ha="left",
+                    va="top",
                     zorder=2,
                 )
 
@@ -771,13 +765,14 @@ class LiveEpisodeRenderer:
             label=labels,
         )
         self.comparison_bar_labels = [
-            self.ax_opt.text(x_val, 0.0, "0.00", ha="center", va="bottom", fontsize=8.5, color=main_text)
+            self.ax_opt.text(x_val, 0.0, "0.00", ha="center", va="bottom", fontsize=8.2, color=main_text)
             for x_val in x_vals
         ]
-        self.ax_opt.set_title("Average Resources Per Episode", color=main_text, fontsize=11.5, fontweight="bold", pad=9)
+        self.ax_opt.set_title("Average Resources Per Episode", color=main_text, fontsize=11.2, fontweight="bold", pad=11)
         self.ax_opt.set_xticks(x_vals)
         self.ax_opt.set_xticklabels(labels, color=main_text)
         self.ax_opt.set_ylabel("Average Resources", color=main_text)
+        self.ax_opt.tick_params(axis="x", pad=7)
         self.ax_opt.set_ylim(0.0, 1.0)
         self.ax_opt.grid(True, axis="y", color="#6b7280", alpha=0.28, linewidth=0.8)
         legend = self.ax_opt.legend(loc="upper right", framealpha=0.9, fontsize=8.5)
@@ -803,25 +798,33 @@ class LiveEpisodeRenderer:
                 zorder=0.2,
             )
         )
-        self.ax_coop.set_title("Comparison Summary", color=main_text, fontsize=11.5, fontweight="bold", pad=9)
+        self.ax_coop.set_title("Comparison Summary", color=main_text, fontsize=11.2, fontweight="bold", pad=11)
+        summary_box_x = 0.035
+        summary_box_y = 0.055
+        summary_box_height = 0.88
+        summary_text_x = summary_box_x + 0.04
+        summary_top_y = summary_box_y + summary_box_height - 0.05
+        self.comparison_summary_layout = {
+            "top_y": summary_top_y,
+            "line_gap": 0.08,
+            "text_x": summary_text_x,
+        }
         self.comparison_summary_values = {}
-        summary_rows = [
-            ("WIN COUNT", "wins"),
-            ("PERFORMANCE", "performance"),
-            ("GAP", "gap"),
-        ]
-        for idx, (label, key) in enumerate(summary_rows):
-            y = 0.76 - idx * 0.24
-            self.ax_coop.text(0.08, y, label, color=muted_text, fontsize=8, fontweight="bold", va="top", zorder=2)
+        for key in ("win_header", "pretrained_wins", "scratch_wins", "performance_header", "performance", "gap_header", "gap"):
+            is_header = key.endswith("_header")
             self.comparison_summary_values[key] = self.ax_coop.text(
-                0.08,
-                y - 0.075,
+                summary_text_x,
+                summary_top_y,
                 "",
-                color=main_text,
-                fontsize=12.2 if key != "performance" else 10.8,
+                color=muted_text if is_header else main_text,
+                alpha=0.5 if is_header else 1.0,
+                fontsize=9 if is_header else (9.4 if key == "performance" else 10.8),
                 fontweight="bold",
                 va="top",
-                linespacing=1.4,
+                ha="left",
+                linespacing=1.45,
+                wrap=True,
+                clip_on=True,
                 zorder=2,
             )
 
@@ -848,22 +851,45 @@ class LiveEpisodeRenderer:
             self.comparison_metric_values[team_key]["efficiency"].set_text(f"{efficiency:.3f}")
 
         top = max(avg_values, default=0.0)
-        self.ax_opt.set_ylim(0.0, max(1.0, top * 1.2))
+        y_top = max(1.0, top * 1.22)
+        self.ax_opt.set_ylim(0.0, y_top)
         for bar, label, value in zip(self.comparison_bars, self.comparison_bar_labels, avg_values):
             bar.set_height(value)
-            label.set_position((bar.get_x() + bar.get_width() / 2.0, value))
+            label.set_position((bar.get_x() + bar.get_width() / 2.0, value + y_top * 0.025))
             label.set_text(f"{value:.2f}")
 
-        wins_lines = [
-            f"{str(spec['label'])}: {int(win_counts.get(str(spec['key']), 0))}"
-            for spec in self.comparison_team_specs
-        ]
         summary_lines = summary_text.splitlines()
         performance = summary_lines[0] if summary_lines else summary_text
+        if performance == "Pretrained agents outperforming scratch agents":
+            performance = "Pretrained agents\noutperforming scratch\nagents"
+        elif performance == "Scratch agents outperforming pretrained agents":
+            performance = "Scratch agents\noutperforming pretrained\nagents"
+        elif performance == "Pretrained and scratch agents are currently tied":
+            performance = "Pretrained and scratch\nagents are currently tied"
         gap = summary_lines[1].replace("Performance gap: ", "") if len(summary_lines) > 1 else ""
-        self.comparison_summary_values["wins"].set_text("\n".join(wins_lines))
-        self.comparison_summary_values["performance"].set_text(performance)
-        self.comparison_summary_values["gap"].set_text(gap)
+
+        layout = self.comparison_summary_layout
+        y = float(layout["top_y"])
+        line_gap = float(layout["line_gap"])
+        text_x = float(layout["text_x"])
+        summary_items = []
+        summary_items.append(("win_header", "WIN COUNT", y))
+        y -= line_gap
+        summary_items.append(("pretrained_wins", f"Pretrained: {int(win_counts.get('pretrained', 0))}", y))
+        y -= line_gap
+        summary_items.append(("scratch_wins", f"Scratch: {int(win_counts.get('scratch', 0))}", y))
+        y -= line_gap * 1.2
+        summary_items.append(("performance_header", "PERFORMANCE", y))
+        y -= line_gap
+        summary_items.append(("performance", performance, y))
+        num_lines = performance.count("\n") + 1
+        y -= line_gap * num_lines * 1.1
+        summary_items.append(("gap_header", "GAP", y))
+        y -= line_gap
+        summary_items.append(("gap", gap, y))
+        for key, value, y_pos in summary_items:
+            self.comparison_summary_values[key].set_position((text_x, y_pos))
+            self.comparison_summary_values[key].set_text(value)
 
     def update_hud(self, hud_state: Optional[Dict[str, object]]) -> None:
         if hud_state is None:
