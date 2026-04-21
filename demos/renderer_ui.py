@@ -480,7 +480,7 @@ def _moving_avg(self, values: List[float], window: int) -> List[float]:
         for idx in range(len(values))
     ]
 
-def setup_live_speed_controls(self, _unused: float) -> None:
+def setup_live_layout(self) -> None:
     self.fig.subplots_adjust(bottom=0.24)
     self._shift_environment_axis_right()
 

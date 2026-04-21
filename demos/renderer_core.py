@@ -602,7 +602,7 @@ for _name in (
     "_update_agent_contribution_bars",
     "_update_cooperation_lines",
     "_moving_avg",
-    "setup_live_speed_controls",
+    "setup_live_layout",
 ):
     setattr(LiveEpisodeRenderer, _name, getattr(renderer_ui, _name))
 
@@ -622,7 +622,7 @@ def run_live_training(
     final_demo_episodes: int = 10,
     show_perception: bool = True,
     show_communication: bool = True,
-    mode: str = "live",
+    mode: str = "train",
 ) -> List[Dict]:
     mode = mode.lower().strip()
 

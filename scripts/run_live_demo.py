@@ -16,6 +16,5 @@ if __name__ == "__main__":
         render_every=200,
         render_delay=0.001,
         fast_mode=False,
-        mode="playback",
         use_communication=True,
     )

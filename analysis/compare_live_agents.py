@@ -204,7 +204,7 @@ def run_live_comparison(
         agent_styles=agent_styles,
     )
     renderer.setup_team_comparison_view(TEAM_SPECS)
-    renderer.setup_live_speed_controls(render_delay)
+    renderer.setup_live_layout()
 
     rows: List[Dict] = []
     cumulative_resources = {agent: 0 for agent in env.agents}
