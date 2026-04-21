@@ -109,7 +109,7 @@ class LiveEpisodeRenderer:
         self.resource_collect_state: Dict[tuple[int, int], int] = {}
 
         plt.ion()
-        self.figure_bg = "#c2a476"
+        self.figure_bg = "#2e2e2e"
         self.fig = plt.figure(figsize=(18.0, 8.4), facecolor=self.figure_bg)
         self.fig.patch.set_facecolor(self.figure_bg)
         self._add_figure_background()
@@ -468,7 +468,7 @@ class LiveEpisodeRenderer:
         self._style_ui_axis(self.ax_plot, "Learning Progress")
         self.ax_plot.set_xlabel("Episode")
         self.ax_plot.set_ylabel("Smoothed Reward / Resources")
-        self.ax_plot.grid(True, color="#e5e7eb", alpha=0.9, linewidth=0.8)
+        self.ax_plot.grid(True, color="#9ca3af", alpha=0.2, linewidth=0.8)
         self.ax_plot.legend(loc="upper left", frameon=False, fontsize=9)
 
         self.policy_line, = self.ax_ppo.plot(
@@ -479,7 +479,7 @@ class LiveEpisodeRenderer:
             label="Policy Loss (PPO)",
         )
         self.ax_entropy = self.ax_ppo.twinx()
-        self.ax_entropy.set_facecolor("#f7f7f7")
+        self.ax_entropy.set_facecolor("#ffffff")
         self.entropy_line, = self.ax_entropy.plot(
             [],
             [],
@@ -490,14 +490,14 @@ class LiveEpisodeRenderer:
         self.ax_ppo.set_xlim(0, max(1, num_episodes))
         self._style_ui_axis(self.ax_ppo, "PPO Training Dynamics")
         self.ax_ppo.set_xlabel("Episode")
-        self.ax_ppo.set_ylabel("Policy Loss", color="#dc2626")
+        self.ax_ppo.set_ylabel("Policy Loss", color="#f5f5f5")
         self.ax_ppo.tick_params(axis="y", labelcolor="#dc2626")
-        self.ax_ppo.grid(True, color="#e5e7eb", alpha=0.9, linewidth=0.8)
-        self.ax_entropy.set_ylabel("Entropy", color="#7c3aed")
+        self.ax_ppo.grid(True, color="#9ca3af", alpha=0.2, linewidth=0.8)
+        self.ax_entropy.set_ylabel("Entropy", color="#f5f5f5")
         self.ax_entropy.tick_params(axis="y", labelcolor="#7c3aed")
         self.ax_ppo.set_ylim(-1.0, 2.0)
         self.ax_entropy.set_ylim(0.0, 2.0)
-        self.ax_entropy.spines["right"].set_color("#9ca3af")
+        self.ax_entropy.spines["right"].set_color("#bbbbbb")
         ppo_handles = [self.policy_line, self.entropy_line]
         self.ax_ppo.legend(ppo_handles, [line.get_label() for line in ppo_handles], loc="upper right", frameon=False, fontsize=9)
 
@@ -520,7 +520,7 @@ class LiveEpisodeRenderer:
         self._style_ui_axis(self.ax_opt, "PPO Optimisation Signals")
         self.ax_opt.set_xlabel("Episode")
         self.ax_opt.set_ylabel("Loss Value")
-        self.ax_opt.grid(True, color="#e5e7eb", alpha=0.9, linewidth=0.8)
+        self.ax_opt.grid(True, color="#9ca3af", alpha=0.2, linewidth=0.8)
         self.ax_opt.legend(loc="upper right", frameon=False, fontsize=9)
 
         self.fairness_line, = self.ax_coop.plot(
@@ -542,7 +542,7 @@ class LiveEpisodeRenderer:
         self._style_ui_axis(self.ax_coop, "Cooperation & Fairness")
         self.ax_coop.set_xlabel("Episode")
         self.ax_coop.set_ylabel("Metric Value")
-        self.ax_coop.grid(True, color="#e5e7eb", alpha=0.9, linewidth=0.8)
+        self.ax_coop.grid(True, color="#9ca3af", alpha=0.2, linewidth=0.8)
         self.ax_coop.legend(loc="lower right", frameon=False, fontsize=9)
 
         self.fig.subplots_adjust(left=0.035, right=0.95, top=0.91, bottom=0.18)
@@ -560,8 +560,8 @@ class LiveEpisodeRenderer:
         y_grad = np.linspace(0.0, 1.0, 180)
         gradient = np.outer(y_grad, x_grad)
         base = np.ones((180, 320, 3))
-        warm = np.array([194, 164, 118], dtype=float) / 255.0
-        shadow = np.array([194, 164, 118], dtype=float) / 255.0
+        warm = np.array([46, 46, 46], dtype=float) / 255.0
+        shadow = np.array([46, 46, 46], dtype=float) / 255.0
         base[:] = warm
         base = base * (1.0 - 0.38 * gradient[..., None]) + shadow * (0.38 * gradient[..., None])
         bg_axis.imshow(base, aspect="auto", extent=(0, 1, 0, 1), origin="lower")
@@ -588,15 +588,15 @@ class LiveEpisodeRenderer:
         return self.agent_values[(idx + 1) % len(self.agent_values)]
 
     def _style_ui_axis(self, axis, title: str) -> None:
-        axis.set_facecolor("#f7f7f7")
-        axis.set_title(title, color="#1a1a1a", fontsize=11.5, fontweight="bold", pad=9)
-        axis.tick_params(colors="#374151", labelsize=8.5)
-        axis.xaxis.label.set_color("#111827")
-        axis.yaxis.label.set_color("#111827")
+        axis.set_facecolor("#ffffff")
+        axis.set_title(title, color="#f5f5f5", fontsize=11.5, fontweight="bold", pad=9)
+        axis.tick_params(colors="#f5f5f5", labelsize=8.5)
+        axis.xaxis.label.set_color("#f5f5f5")
+        axis.yaxis.label.set_color("#f5f5f5")
         axis.xaxis.label.set_size(9.5)
         axis.yaxis.label.set_size(9.5)
         for spine in axis.spines.values():
-            spine.set_color("#d1d5db")
+            spine.set_color("#bbbbbb")
 
     def _setup_hud_axis(self) -> None:
         self.ax_hud.set_facecolor("#0b1016")
