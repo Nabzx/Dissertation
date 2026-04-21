@@ -16,7 +16,6 @@ from env.utils import (
 from agents.ppo_agent import PPOAgent
 from env.rewards import apply_reward_scheme
 from agents.communication import CommunicationLayer
-from minigames import CaptureFlagGame, GameModeWrapper
 
 
 def run_episode(
@@ -253,10 +252,8 @@ def run_batch_simulation(
     )
 
     game_mode = game_mode.lower()
-    if game_mode == "capture_flag":
-        env = GameModeWrapper(env, CaptureFlagGame(env))
-    elif game_mode not in ("default", "none"):
-        raise ValueError(f"Unknown game_mode '{game_mode}'. Expected 'default' or 'capture_flag'.")
+    if game_mode not in ("default", "none"):
+        raise ValueError(f"Unknown game_mode '{game_mode}'. Expected 'default' or 'none'.")
 
     agent_type = agent_type.lower()
     reward_scheme = reward_scheme.lower()

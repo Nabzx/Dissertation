@@ -366,11 +366,10 @@ def update_hud(self, hud_state: Optional[Dict[str, object]]) -> None:
     phase = hud_state.get("phase", "Training")
     episode_reward = float(hud_state.get("episode_reward", 0.0))
     game_metrics = hud_state.get("game_metrics", {}) or {}
-    game_mode = game_metrics.get("mode") or hud_state.get("game_mode")
     winner = game_metrics.get("winner") if isinstance(game_metrics, dict) else None
     avg_time = game_metrics.get("average_time_to_flag") if isinstance(game_metrics, dict) else None
     flag_position = game_metrics.get("flag_position") if isinstance(game_metrics, dict) else None
-    phase_label = "CAPTURE THE FLAG" if game_mode == "capture_flag" else str(phase).upper()
+    phase_label = str(phase).upper()
     self.hud_phase_text.set_text(phase_label)
     self.hud_episode_text.set_text(f"Episode: {episode}/{total_episodes}")
     flag_text = f" | Flag: {flag_position}" if flag_position is not None else ""
