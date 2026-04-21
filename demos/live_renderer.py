@@ -126,10 +126,7 @@ class LiveEpisodeRenderer:
             agent_value: deque(maxlen=self.trail_length)
             for agent_value in self.agent_values
         }
-        self.communication_state = {
-            agent_value: {"pulses": []}
-            for agent_value in self.agent_values
-        }
+        self.pulses: List[Dict[str, object]] = []
         self.previous_resource_positions: set[tuple[int, int]] = set()
         self.resource_spawn_state: Dict[tuple[int, int], int] = {}
         self.resource_collect_state: Dict[tuple[int, int], int] = {}
@@ -276,22 +273,20 @@ class LiveEpisodeRenderer:
                 self.perception_ray_lines[agent_value].append(line)
                 self.ax_grid.add_line(line)
 
-        self.communication_pulse_patches = {}
-        for agent_value in self.agent_values:
-            self.communication_pulse_patches[agent_value] = []
-            for _ in range(6):
-                pulse = Circle(
-                    (-10.0, -10.0),
-                    radius=0.0,
-                    fill=False,
-                    edgecolor="#facc15",
-                    linewidth=1.8,
-                    alpha=0.0,
-                    zorder=3.85,
-                    visible=False,
-                )
-                self.ax_grid.add_patch(pulse)
-                self.communication_pulse_patches[agent_value].append(pulse)
+        self.communication_pulse_patches: List[Circle] = []
+        for _ in range(max(6, len(self.agent_values) * 6)):
+            pulse = Circle(
+                (-10.0, -10.0),
+                radius=0.0,
+                fill=False,
+                edgecolor="#facc15",
+                linewidth=1.8,
+                alpha=0.0,
+                zorder=3.85,
+                visible=False,
+            )
+            self.ax_grid.add_patch(pulse)
+            self.communication_pulse_patches.append(pulse)
 
         self.resource_patches: List[Circle] = []
         for _ in range(max_resources):
@@ -446,7 +441,7 @@ class LiveEpisodeRenderer:
         self.episode_resources: List[float] = []
         self.episode_entropy: List[float] = []
         self.episode_cooperation: List[float] = []
-        self.agent_resource_history: Dict[str, List[float]] = {
+        self.agent_resource_totals: Dict[str, List[float]] = {
             self._agent_id(agent_value): [] for agent_value in self.agent_values
         }
         self.resource_line, = self.ax_plot.plot(
@@ -1262,95 +1257,39 @@ class LiveEpisodeRenderer:
         communication_events: Optional[List[Dict[str, object]]],
     ) -> None:
         if not self.show_communication:
-            for state in self.communication_state.values():
-                state["pulses"] = []
-            for patches in self.communication_pulse_patches.values():
-                for patch in patches:
-                    patch.set_visible(False)
+            self.pulses = []
+            for patch in self.communication_pulse_patches:
+                patch.set_visible(False)
             return
 
         if communication_events:
             for event in communication_events:
                 sender = int(event["sender"])
-                if sender in self.communication_state and sender in positions:
+                if sender in positions:
                     row, col = positions[sender]
                     pos = (float(col) + 0.5, float(row) + 0.5)
-                    self.communication_state[sender]["pulses"].append(
-                        {
-                            "pos": pos,
-                            "radius": self.communication_start_radius,
-                            "alpha": 0.6,
-                            "age": 0,
-                        }
-                    )
+                    self.pulses.append({"pos": pos, "r": self.communication_start_radius, "a": 0.6})
 
-        for sender, state in self.communication_state.items():
-            patches = self.communication_pulse_patches[sender]
-            if sender not in positions:
-                state["pulses"] = []
-                for patch in patches:
-                    patch.set_visible(False)
-                continue
+        live_pulses = []
+        for pulse in self.pulses:
+            pulse["r"] = float(pulse["r"]) + self.communication_growth_rate
+            pulse["a"] = float(pulse["a"]) - self.communication_fade_rate
+            if pulse["a"] > 0:
+                live_pulses.append(pulse)
+        self.pulses = live_pulses[-len(self.communication_pulse_patches):]
 
-            active_pulses = []
-            for pulse in state["pulses"]:
-                pulse["radius"] = float(pulse["radius"]) + self.communication_growth_rate
-                pulse["alpha"] = float(pulse["alpha"]) - self.communication_fade_rate
-                pulse["age"] = int(pulse["age"]) + 1
-                if pulse["alpha"] > 0:
-                    active_pulses.append(pulse)
-            state["pulses"] = active_pulses[-len(patches):]
-
-            for patch, pulse in zip(patches, state["pulses"]):
-                patch.center = pulse["pos"]
-                patch.set_radius(float(pulse["radius"]))
-                patch.set_alpha(float(pulse["alpha"]))
-                patch.set_visible(True)
-            for patch in patches[len(state["pulses"]):]:
-                patch.set_visible(False)
+        for patch, pulse in zip(self.communication_pulse_patches, self.pulses):
+            patch.center = pulse["pos"]
+            patch.set_radius(float(pulse["r"]))
+            patch.set_alpha(float(pulse["a"]))
+            patch.set_visible(True)
+        for patch in self.communication_pulse_patches[len(self.pulses):]:
+            patch.set_visible(False)
 
     def reset_communication_visuals(self) -> None:
-        for state in self.communication_state.values():
-            state["pulses"] = []
-        for patches in self.communication_pulse_patches.values():
-            for patch in patches:
-                patch.set_visible(False)
-
-    def reset_playback_visual_state(self, grid: np.ndarray) -> None:
-        self.reset_communication_visuals()
-        self.resource_spawn_state.clear()
-        self.resource_collect_state.clear()
-        self.previous_resource_positions = {tuple(pos) for pos in np.argwhere(grid == 1)}
-        for agent_value in self.agent_trails:
-            self.agent_trails[agent_value].clear()
-            positions = np.argwhere(grid == agent_value)
-            if len(positions):
-                row, col = positions[0]
-                self.agent_trails[agent_value].append((int(row), int(col)))
-            self._update_trail_patches(agent_value)
-
-    def _build_signal_curve(
-        self,
-        sender_pos: tuple[float, float],
-        receiver_pos: tuple[float, float],
-        sender: int,
-    ) -> tuple[np.ndarray, np.ndarray]:
-        sx, sy = sender_pos
-        rx, ry = receiver_pos
-        mid_x = (sx + rx) / 2.0
-        mid_y = (sy + ry) / 2.0
-        dx = rx - sx
-        dy = ry - sy
-        distance = max(np.hypot(dx, dy), 1e-6)
-        perp_x = -dy / distance
-        perp_y = dx / distance
-        bend = 0.18 if self._agent_index(sender) % 2 == 0 else -0.18
-        control_x = mid_x + perp_x * distance * bend
-        control_y = mid_y + perp_y * distance * bend
-        t = np.linspace(0.0, 1.0, 20)
-        curve_x = (1 - t) ** 2 * sx + 2 * (1 - t) * t * control_x + t**2 * rx
-        curve_y = (1 - t) ** 2 * sy + 2 * (1 - t) * t * control_y + t**2 * ry
-        return curve_x, curve_y
+        self.pulses = []
+        for patch in self.communication_pulse_patches:
+            patch.set_visible(False)
 
     def update_learning_plot(
         self,
@@ -1404,8 +1343,8 @@ class LiveEpisodeRenderer:
         resources = per_agent_resources or {}
         averages = []
         for agent_id in self.contribution_agent_ids:
-            self.agent_resource_history[agent_id].append(float(resources.get(agent_id, 0.0)))
-            averages.append(float(np.mean(self.agent_resource_history[agent_id])))
+            self.agent_resource_totals[agent_id].append(float(resources.get(agent_id, 0.0)))
+            averages.append(float(np.mean(self.agent_resource_totals[agent_id])))
 
         top = max(averages, default=0.0)
         self.ax_opt.set_ylim(0.0, max(1.0, top * 1.18))
@@ -1427,14 +1366,6 @@ class LiveEpisodeRenderer:
             float(np.mean(values[max(0, idx - window + 1) : idx + 1]))
             for idx in range(len(values))
         ]
-
-    def _moving_avg_skip_nan(self, values: List[float], window: int) -> List[float]:
-        smoothed: List[float] = []
-        for idx in range(len(values)):
-            window_values = np.array(values[max(0, idx - window + 1) : idx + 1], dtype=float)
-            valid = window_values[~np.isnan(window_values)]
-            smoothed.append(float(np.mean(valid)) if len(valid) else np.nan)
-        return smoothed
 
     def refresh(self, render_delay: float) -> None:
         self.fig.canvas.draw_idle()
@@ -1471,7 +1402,7 @@ class LiveEpisodeRenderer:
     def _update_speed_status_label(self) -> None:
         if not hasattr(self, "speed_status_text"):
             return
-        mode_label = getattr(self, "speed_status_mode", "Playback")
+        mode_label = getattr(self, "speed_status_mode", "Live")
         self.speed_status_text.set_text(f"{mode_label} delay: {self.speed_delay:.4f}s/frame")
 
     def setup_live_speed_controls(self, initial_delay: float) -> None:
@@ -1507,238 +1438,6 @@ class LiveEpisodeRenderer:
         plt.show()
 
 
-class PlaybackController:
-    def __init__(
-        self,
-        renderer: LiveEpisodeRenderer,
-        history: List[List[Dict[str, object]]],
-        summaries: List[Dict],
-    ):
-        self.renderer = renderer
-        self.history = history
-        self.summaries = summaries
-        self.current_episode = 0
-        self.current_step = 0
-        self.playing = False
-        self.updating_sliders = False
-
-        self.renderer.fig.subplots_adjust(bottom=0.24)
-        self.renderer._shift_environment_axis_right()
-        self._create_controls()
-        self._connect_keys()
-        self._show_frame()
-
-    def _create_controls(self) -> None:
-        max_episode = max(0, len(self.history) - 1)
-        max_step = max(0, len(self.history[0]) - 1) if self.history else 0
-
-        ax_episode = self.renderer.fig.add_axes([0.08, 0.15, 0.56, 0.025])
-        ax_step = self.renderer.fig.add_axes([0.08, 0.105, 0.56, 0.025])
-        ax_speed = self.renderer.fig.add_axes([0.08, 0.06, 0.46, 0.025])
-
-        self.episode_slider = Slider(
-            ax_episode,
-            "Episode",
-            0,
-            max_episode,
-            valinit=0,
-            valstep=1,
-        )
-        self.step_slider = Slider(
-            ax_step,
-            "Step",
-            0,
-            max_step,
-            valinit=0,
-            valstep=1,
-        )
-        self.speed_slider = Slider(
-            ax_speed,
-            "Delay",
-            0.0001,
-            0.1,
-            valinit=self.renderer.get_speed_delay(0.01),
-            valfmt="%.4f",
-        )
-        self.speed_slider.on_changed(self.renderer.set_speed_delay)
-        self.renderer.attach_speed_status_label("Playback")
-
-        self.episode_slider.on_changed(self._on_episode_slider)
-        self.step_slider.on_changed(self._on_step_slider)
-
-        button_specs = [
-            ("Play/Pause", [0.69, 0.13, 0.1, 0.045], self.toggle_play),
-            ("<< Ep", [0.805, 0.13, 0.075, 0.045], self.prev_episode),
-            ("Ep >>", [0.89, 0.13, 0.075, 0.045], self.next_episode),
-            ("- Step", [0.805, 0.07, 0.075, 0.045], self.prev_step),
-            ("Step +", [0.89, 0.07, 0.075, 0.045], self.next_step),
-            ("Slow", [0.58, 0.045, 0.07, 0.045], lambda: self.set_speed_preset(0.1)),
-            ("Normal", [0.66, 0.045, 0.08, 0.045], lambda: self.set_speed_preset(0.01)),
-            ("Fast", [0.75, 0.045, 0.07, 0.045], lambda: self.set_speed_preset(0.0001)),
-        ]
-        self.buttons = []
-        for label, rect, callback in button_specs:
-            button = Button(self.renderer.fig.add_axes(rect), label)
-            button.on_clicked(lambda _event, cb=callback: cb())
-            self.buttons.append(button)
-
-    def _connect_keys(self) -> None:
-        self.renderer.fig.canvas.mpl_connect("key_press_event", self._on_key_press)
-
-    def _on_key_press(self, event) -> None:
-        if event.key == " ":
-            self.toggle_play()
-        elif event.key == "left":
-            self.prev_step()
-        elif event.key == "right":
-            self.next_step()
-        elif event.key == "up":
-            self.prev_episode()
-        elif event.key == "down":
-            self.next_episode()
-
-    def _on_episode_slider(self, value: float) -> None:
-        if self.updating_sliders:
-            return
-        self.current_episode = int(value)
-        self.current_step = min(self.current_step, len(self.history[self.current_episode]) - 1)
-        self._sync_step_slider_bounds()
-        self._show_frame()
-
-    def _on_step_slider(self, value: float) -> None:
-        if self.updating_sliders:
-            return
-        self.current_step = int(value)
-        self._show_frame()
-
-    def _sync_step_slider_bounds(self) -> None:
-        max_step = max(0, len(self.history[self.current_episode]) - 1)
-        self.step_slider.valmax = max_step
-        self.step_slider.ax.set_xlim(self.step_slider.valmin, max_step)
-        self.current_step = min(self.current_step, max_step)
-        self.updating_sliders = True
-        self.step_slider.set_val(self.current_step)
-        self.updating_sliders = False
-
-    def _sync_sliders(self) -> None:
-        self.updating_sliders = True
-        self.episode_slider.set_val(self.current_episode)
-        self._sync_step_slider_bounds()
-        self.step_slider.set_val(self.current_step)
-        self.updating_sliders = False
-
-    def _show_frame(self) -> None:
-        frame = self._current_frame()
-        grid = self._frame_grid(frame)
-        self.renderer.reset_playback_visual_state(grid)
-        hud_state = self._build_playback_hud_state(frame)
-        self.renderer.update(
-            grid,
-            int(frame.get("episode", self.current_episode + 1)),
-            len(self.history),
-            int(frame.get("step", self.current_step)),
-            self.renderer.get_speed_delay(0.001),
-            actions=None,
-            communication_events=None,
-            hud_state=hud_state,
-            render_info=frame.get("render_info"),
-        )
-
-    def _current_frame(self) -> Dict[str, object]:
-        frame = self.history[self.current_episode][self.current_step]
-        if isinstance(frame, np.ndarray):
-            return {
-                "episode": self.current_episode + 1,
-                "step": self.current_step,
-                "grid": frame,
-                "agent_positions": {},
-                "resource_positions": [],
-            }
-        return frame
-
-    def _frame_grid(self, frame: Dict[str, object]) -> np.ndarray:
-        return np.asarray(frame["grid"])
-
-    def _build_playback_hud_state(self, frame: Dict[str, object]) -> Dict[str, object]:
-        grid = self._frame_grid(frame)
-        summary = self.summaries[self.current_episode] if self.current_episode < len(self.summaries) else {}
-        resources_collected = summary.get("resources_collected", {})
-        game_metrics = frame.get("game_metrics", summary.get("game_metrics", {}))
-        recorded_positions = frame.get("agent_positions", {})
-        agents_state = {}
-        for agent_value in self.renderer.agent_values:
-            agent_id = self.renderer._agent_id(agent_value)
-            positions = np.argwhere(grid == agent_value)
-            position = recorded_positions.get(agent_id)
-            if position is None:
-                position = tuple(map(int, positions[0])) if len(positions) else ("-", "-")
-            agents_state[agent_id] = {
-                "resources": resources_collected.get(agent_id, 0),
-                "cumulative_resources": resources_collected.get(agent_id, 0),
-                "position": position,
-                "facing": "playback",
-                "communication": "recorded",
-                "status": "Active" if len(positions) else "Hidden",
-                "recent_action": "n/a",
-            }
-
-        return {
-            "phase": "Playback",
-            "episode": int(frame.get("episode", self.current_episode + 1)),
-            "total_episodes": len(self.history),
-            "step": int(frame.get("step", self.current_step)),
-            "episode_reward": float(summary.get("total_reward", 0.0)),
-            "game_metrics": game_metrics,
-            "agents": agents_state,
-        }
-
-    def toggle_play(self) -> None:
-        self.playing = not self.playing
-
-    def set_speed_preset(self, delay: float) -> None:
-        self.speed_slider.set_val(float(np.clip(delay, 0.0001, 0.1)))
-
-    def prev_episode(self) -> None:
-        self.current_episode = max(0, self.current_episode - 1)
-        self.current_step = 0
-        self._sync_sliders()
-        self._show_frame()
-
-    def next_episode(self) -> None:
-        self.current_episode = min(len(self.history) - 1, self.current_episode + 1)
-        self.current_step = 0
-        self._sync_sliders()
-        self._show_frame()
-
-    def prev_step(self) -> None:
-        if self.current_step > 0:
-            self.current_step -= 1
-        elif self.current_episode > 0:
-            self.current_episode -= 1
-            self.current_step = len(self.history[self.current_episode]) - 1
-        self._sync_sliders()
-        self._show_frame()
-
-    def next_step(self) -> None:
-        if self.current_step < len(self.history[self.current_episode]) - 1:
-            self.current_step += 1
-        elif self.current_episode < len(self.history) - 1:
-            self.current_episode += 1
-            self.current_step = 0
-        else:
-            self.playing = False
-        self._sync_sliders()
-        self._show_frame()
-
-    def run(self) -> None:
-        plt.ion()
-        while plt.fignum_exists(self.renderer.fig.number):
-            if self.playing:
-                self.next_step()
-            delay = self.renderer.get_speed_delay(float(self.speed_slider.val))
-            plt.pause(delay)
-
-
 def run_live_training(
     num_episodes: int = 1000,
     reward_scheme: str = "selfish",
@@ -1754,11 +1453,9 @@ def run_live_training(
     final_demo_episodes: int = 10,
     show_perception: bool = True,
     show_communication: bool = True,
-    mode: str = "playback",
+    mode: str = "live",
 ) -> List[Dict]:
     mode = mode.lower().strip()
-    if mode not in {"live", "playback"}:
-        raise ValueError("mode must be 'live' or 'playback'")
 
     env = GridWorldEnv(
         grid_size=grid_size,
@@ -1792,9 +1489,6 @@ def run_live_training(
         renderer.setup_live_speed_controls(render_delay)
 
     episode_summaries: List[Dict] = []
-    history: List[List[Dict[str, object]]] = []
-    recent_rewards: List[float] = []
-    recent_resources: List[int] = []
     cumulative_resources_run = {agent: 0 for agent in env.agents}
     action_labels = {
         0: "stay",
@@ -1809,7 +1503,6 @@ def run_live_training(
         render_episode: bool,
         episode_label: int,
         train_policy: bool = True,
-        record_history: bool = True,
     ) -> Dict:
         def facing_label(agent_id: str) -> str:
             agent_value = renderer._agent_value(agent_id)
@@ -1859,26 +1552,6 @@ def run_live_training(
             }
 
         raw_obs, _ = env.reset(seed=episode_seed)
-        episode_history: List[Dict[str, object]] = []
-
-        def build_history_frame(step_idx: int) -> Dict[str, object]:
-            grid_snapshot = env.grid.copy()
-            return {
-                "episode": episode_label,
-                "step": step_idx,
-                "grid": grid_snapshot,
-                "agent_positions": {
-                    agent_id: tuple(map(int, position))
-                    for agent_id, position in env.agent_positions.items()
-                },
-                "resource_positions": [
-                    tuple(map(int, position))
-                    for position in np.argwhere(grid_snapshot == 1)
-                ],
-            }
-
-        if record_history:
-            episode_history.append(build_history_frame(0))
 
         comm_layer: Optional[CommunicationLayer] = None
         if use_communication:
@@ -1923,9 +1596,6 @@ def run_live_training(
                 step_flat_obs[agent_id] = flat_obs.astype(np.float32)
 
             raw_next_obs, raw_rewards, terminations, truncations, _ = env.step(actions)
-            if record_history:
-                episode_history.append(build_history_frame(step + 1))
-
             for agent_id, reward in raw_rewards.items():
                 if reward > 0.0:
                     cumulative_collected[agent_id] += 1
@@ -2015,7 +1685,6 @@ def run_live_training(
             "total_reward": total_shaped_reward,
             "ppo_metrics": ppo_metrics,
             "steps": env.step_count,
-            "history": episode_history,
             "comms": n_comms,
         }
 
@@ -2041,26 +1710,20 @@ def run_live_training(
             "comms": n_comms,
         }
         episode_summaries.append(episode_summary)
-        history.append(episode_result["history"])
-        recent_rewards.append(total_shaped_reward)
-        recent_resources.append(total_resources)
         renderer.update_learning_plot(total_shaped_reward, total_resources, resources)
         renderer.update_ppo_plot(ppo_metrics)
         renderer.refresh(render_delay)
 
         print(f"Episode {episode + 1} | reward: {total_shaped_reward:.2f} | comms: {n_comms}")
 
-    if mode == "playback":
-        PlaybackController(renderer, history, episode_summaries).run()
-    else:
+    if mode == "live":
         for demo_idx in range(final_demo_episodes):
             run_live_episode(
                 episode_seed=num_episodes + demo_idx,
                 render_episode=True,
                 episode_label=num_episodes,
                 train_policy=False,
-                record_history=False,
             )
-        renderer.close()
+    renderer.close()
 
     return episode_summaries
