@@ -455,7 +455,6 @@ class LiveEpisodeRenderer:
         self.gradient_norms: List[float] = []
         self.fairness_values: List[float] = []
         self.balance_values: List[float] = []
-        self.reward_line, = self.ax_plot.plot([], [], color="#2563eb", linewidth=2.2, label="Reward Avg (50)")
         self.resource_line, = self.ax_plot.plot(
             [],
             [],
@@ -465,9 +464,9 @@ class LiveEpisodeRenderer:
         )
         self.ax_plot.set_xlim(0, max(1, num_episodes))
         self.ax_plot.set_ylim(0, max(1.0, max_possible_reward))
-        self._style_ui_axis(self.ax_plot, "Learning Progress")
+        self._style_ui_axis(self.ax_plot, "Resources Collected Over Time")
         self.ax_plot.set_xlabel("Episode")
-        self.ax_plot.set_ylabel("Smoothed Reward / Resources")
+        self.ax_plot.set_ylabel("Resources Collected (Smoothed)")
         self.ax_plot.grid(True, color="#9ca3af", alpha=0.2, linewidth=0.8)
         self.ax_plot.legend(loc="upper left", frameon=False, fontsize=9)
 
@@ -1176,18 +1175,15 @@ class LiveEpisodeRenderer:
         self.episode_rewards.append(float(total_reward))
         self.episode_resources.append(float(total_resources))
         self._append_cooperation_metrics(per_agent_resources)
-        if len(self.episode_rewards) % self.plot_update_every != 0:
+        if len(self.episode_resources) % self.plot_update_every != 0:
             return
 
-        x_vals = list(range(len(self.episode_rewards)))
-        reward_smoothed = self._moving_avg(self.episode_rewards, self.smoothing_window)
-        resource_smoothed = self._moving_avg(self.episode_resources, self.smoothing_window)
+        x_vals = list(range(len(self.episode_resources)))
+        smoothed_resources = self._moving_avg(self.episode_resources, 50)
 
         plot_x = x_vals[:: self.plot_downsample] or x_vals[-1:]
-        plot_reward = reward_smoothed[:: self.plot_downsample] or reward_smoothed[-1:]
-        plot_resources = resource_smoothed[:: self.plot_downsample] or resource_smoothed[-1:]
+        plot_resources = smoothed_resources[:: self.plot_downsample] or smoothed_resources[-1:]
 
-        self.reward_line.set_data(plot_x, plot_reward)
         self.resource_line.set_data(plot_x, plot_resources)
         self._update_cooperation_lines(x_vals)
 
