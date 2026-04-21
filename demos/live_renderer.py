@@ -423,14 +423,13 @@ class LiveEpisodeRenderer:
         legend_handles = [
             Line2D([0], [0], marker="o", color="none", markerfacecolor=self._agent_colour(self.agent_values[0]), markeredgecolor=self._agent_edge_colour(self.agent_values[0]), markersize=9, label="Agent"),
             Line2D([0], [0], marker="o", color="none", markerfacecolor=self.arena_palette["resource"], markeredgecolor=self.arena_palette["resource_edge"], markersize=7, label="Resource"),
-            Line2D([0], [0], marker="^", color="none", markerfacecolor="#facc15", markeredgecolor="#fde68a", markersize=9, label="Flag"),
             Rectangle((0, 0), 1, 1, facecolor=self.arena_palette["obstacle"], edgecolor=self.arena_palette["obstacle_edge"], label="Obstacle"),
         ]
         self.ax_grid.legend(
             handles=legend_handles,
             loc="upper center",
             bbox_to_anchor=(0.5, 1.04),
-            ncol=4,
+            ncol=3,
             frameon=True,
             facecolor="#0b1016",
             edgecolor="#313842",
