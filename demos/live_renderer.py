@@ -729,7 +729,7 @@ class LiveEpisodeRenderer:
         for agent_id in self.hud_agent_text.keys():
             info = agent_states.get(agent_id, {})
             resources = int(info.get("resources", 0))
-            cumulative = int(info.get("cumulative_resources", 0))
+            efficiency = resources / max(1, int(step))
             position = info.get("position", ("-", "-"))
             facing = info.get("facing", "unknown")
             comm_status = info.get("communication", "offline")
@@ -738,7 +738,7 @@ class LiveEpisodeRenderer:
             action = info.get("recent_action", "n/a")
             lines = [
                 f"Type: {agent_type}",
-                f"Res: {resources} | Run: {cumulative}",
+                f"Resources: {resources} | Efficiency: {efficiency:.3f}",
                 f"Pos: {position}",
                 f"Act: {action}",
             ]
