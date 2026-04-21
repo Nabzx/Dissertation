@@ -14,6 +14,22 @@ if str(PROJECT_ROOT) not in sys.path:
 
 import numpy as np
 
+try:
+    from tqdm import tqdm
+except ImportError:
+    class _TqdmFallback:
+        def __init__(self, iterable, **kwargs):
+            self.iterable = iterable
+
+        def __iter__(self):
+            return iter(self.iterable)
+
+        def set_postfix(self, *args, **kwargs):
+            return None
+
+    def tqdm(iterable, **kwargs):
+        return _TqdmFallback(iterable, **kwargs)
+
 from env.gridworld_env import GridWorldEnv
 from agents.communication import CommunicationLayer
 from agents.ppo_agent import PPOAgent, TORCH_AVAILABLE
@@ -25,7 +41,7 @@ def train_headless(
     checkpoint_dir: str = "checkpoints",
     metrics_path: str = "results/headless_training_metrics.json",
     csv_path: str = "results/headless_training_metrics.csv",
-    checkpoint_every: int = 500,
+    checkpoint_every: int = 5000,
     smoothing_window: int = 50,
     reward_scheme: str = "selfish",
     use_communication: bool = False,
@@ -70,7 +86,8 @@ def train_headless(
     metrics: List[Dict] = []
     _make_csv(csv_path)
 
-    for episode in range(num_episodes):
+    pbar = tqdm(range(num_episodes), desc="Training", unit="ep")
+    for episode in pbar:
         episode_data = run_episode(
             env=env,
             agents=None,
@@ -122,19 +139,17 @@ def train_headless(
         metrics.append(row)
         _append_csv_row(csv_path, row)
 
-        if (episode + 1) % 10 == 0:
-            recent = metrics[-10:]
-            avg_reward = float(np.mean([item["total_reward"] for item in recent]))
-            avg_resources = float(np.mean([item["total_resources"] for item in recent]))
-            print(
-                f"Episode {episode + 1}/{num_episodes}: "
-                f"avg_reward={avg_reward:.2f}, avg_resources={avg_resources:.2f}, "
-                f"policy_loss={ppo_metrics.get('policy_loss', 0.0):.4f}, "
-                f"value_loss={ppo_metrics.get('value_loss', 0.0):.4f}, "
-                f"entropy={ppo_metrics.get('entropy', 0.0):.4f}"
-            )
+        recent = metrics[-10:]
+        avg_reward = float(np.mean([item["total_reward"] for item in recent]))
+        avg_resources = float(np.mean([item["total_resources"] for item in recent]))
+        pbar.set_postfix({
+            "reward": f"{avg_reward:.2f}",
+            "res": f"{avg_resources:.2f}",
+        })
 
-        should_checkpoint = checkpoint_every > 0 and (episode + 1) % checkpoint_every == 0
+        should_checkpoint = checkpoint_every > 0 and (
+            (episode + 1) % checkpoint_every == 0 or (episode + 1) == num_episodes
+        )
         if should_checkpoint:
             checkpoint_path = os.path.join(checkpoint_dir, f"ppo_episode_{episode + 1:06d}.pt")
             ppo_agent.save(checkpoint_path)
@@ -149,6 +164,10 @@ def train_headless(
     print(f"Saved final checkpoint: {final_path}")
     print(f"Saved metrics: {metrics_path}")
     print(f"Saved per-episode CSV: {csv_path}")
+
+    from analysis.post_training_analysis import run_post_training_analysis
+
+    run_post_training_analysis(env, ppo_agent, run_name)
     return metrics
 
 
@@ -241,7 +260,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--checkpoint-dir", default="checkpoints")
     parser.add_argument("--metrics-path", default="results/headless_training_metrics.json")
     parser.add_argument("--csv-path", default="results/headless_training_metrics.csv")
-    parser.add_argument("--checkpoint-every", type=int, default=500)
+    parser.add_argument("--checkpoint-every", type=int, default=5000)
     parser.add_argument("--smoothing-window", type=int, default=50)
     parser.add_argument("--reward-scheme", default="selfish")
     parser.add_argument("--communication", action="store_true")
