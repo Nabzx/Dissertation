@@ -109,7 +109,7 @@ class LiveEpisodeRenderer:
         self.resource_collect_state: Dict[tuple[int, int], int] = {}
 
         plt.ion()
-        self.figure_bg = "#f5f0e6"
+        self.figure_bg = "#2a1d0c"
         self.fig = plt.figure(figsize=(18.0, 8.4), facecolor=self.figure_bg)
         self.fig.patch.set_facecolor(self.figure_bg)
         self._add_figure_background()
@@ -561,8 +561,8 @@ class LiveEpisodeRenderer:
         y_grad = np.linspace(0.0, 1.0, 180)
         gradient = np.outer(y_grad, x_grad)
         base = np.ones((180, 320, 3))
-        warm = np.array([245, 240, 230], dtype=float) / 255.0
-        shadow = np.array([232, 222, 207], dtype=float) / 255.0
+        warm = np.array([230, 211, 163], dtype=float) / 255.0
+        shadow = np.array([207, 187, 139], dtype=float) / 255.0
         base[:] = warm
         base = base * (1.0 - 0.38 * gradient[..., None]) + shadow * (0.38 * gradient[..., None])
         bg_axis.imshow(base, aspect="auto", extent=(0, 1, 0, 1), origin="lower")
