@@ -1,4 +1,4 @@
-"""Live arena demo comparing pretrained, scratch, and optional trained PPO."""
+"""Live arena demo comparing pretrained agents against scratch agents."""
 
 from __future__ import annotations
 
@@ -30,8 +30,23 @@ ACTION_LABELS = {
     4: "right",
 }
 
+TEAM_SPECS = [
+    {
+        "key": "pretrained",
+        "label": "Pretrained",
+        "title": "PRETRAINED TEAM (RED)",
+        "color": "#dc2626",
+    },
+    {
+        "key": "scratch",
+        "label": "Scratch",
+        "title": "SCRATCH TEAM (BLUE)",
+        "color": "#2563eb",
+    },
+]
 
-def build_agent_assignments(env: GridWorldEnv, trained_checkpoint: Optional[str]) -> Dict[str, str]:
+
+def build_agent_assignments(env: GridWorldEnv) -> Dict[str, str]:
     if len(env.agents) < 4:
         raise ValueError("compare_live_agents.py expects at least 4 agents.")
 
@@ -39,7 +54,7 @@ def build_agent_assignments(env: GridWorldEnv, trained_checkpoint: Optional[str]
         env.agents[0]: "pretrained",
         env.agents[1]: "pretrained",
         env.agents[2]: "scratch",
-        env.agents[3]: "trained" if trained_checkpoint else "scratch",
+        env.agents[3]: "scratch",
     }
     for agent in env.agents[4:]:
         assignments[agent] = "scratch"
@@ -48,11 +63,10 @@ def build_agent_assignments(env: GridWorldEnv, trained_checkpoint: Optional[str]
 
 def build_agent_styles(assignments: Dict[str, str]) -> Dict[str, Dict[str, str]]:
     colors = {
-        "pretrained": [("#00d9ff", "#8ff3ff"), ("#39ff88", "#b6ffd2")],
-        "scratch": [("#64748b", "#94a3b8"), ("#78716c", "#a8a29e")],
-        "trained": [("#facc15", "#fde68a"), ("#fb923c", "#fed7aa")],
+        "pretrained": [("#ef4444", "#fecaca"), ("#b91c1c", "#fca5a5")],
+        "scratch": [("#3b82f6", "#bfdbfe"), ("#1d4ed8", "#93c5fd")],
     }
-    seen = {"pretrained": 0, "scratch": 0, "trained": 0}
+    seen = {"pretrained": 0, "scratch": 0}
     styles: Dict[str, Dict[str, str]] = {}
     for agent, policy_type in assignments.items():
         palette = colors[policy_type]
@@ -67,11 +81,49 @@ def build_agent_styles(assignments: Dict[str, str]) -> Dict[str, Dict[str, str]]
     return styles
 
 
+def build_team_agents(env: GridWorldEnv) -> Dict[str, List[str]]:
+    return {
+        "pretrained": list(env.agents[:2]),
+        "scratch": list(env.agents[2:4]),
+    }
+
+
+def build_team_metrics(
+    team_agents: Dict[str, List[str]],
+    resources: Dict[str, int],
+    step: int,
+    episode_resource_history: Dict[str, List[int]],
+) -> Dict[str, Dict[str, float]]:
+    metrics: Dict[str, Dict[str, float]] = {}
+    for team_key, agents in team_agents.items():
+        total = float(sum(resources.get(agent_id, 0) for agent_id in agents))
+        history = episode_resource_history.get(team_key, [])
+        metrics[team_key] = {
+            "total_resources": total,
+            "average_per_agent": total / max(1, len(agents)),
+            "efficiency": total / max(1, step),
+            "average_per_episode": float(np.mean(history)) if history else 0.0,
+        }
+    return metrics
+
+
+def build_comparison_summary(team_metrics: Dict[str, Dict[str, float]]) -> str:
+    pretrained_total = float(team_metrics.get("pretrained", {}).get("total_resources", 0.0))
+    scratch_total = float(team_metrics.get("scratch", {}).get("total_resources", 0.0))
+    gap = pretrained_total - scratch_total
+    if gap > 0:
+        leader = "Pretrained agents outperforming scratch agents"
+    elif gap < 0:
+        leader = "Scratch agents outperforming pretrained agents"
+    else:
+        leader = "Pretrained and scratch agents are currently tied"
+    return f"{leader}\nPerformance gap: {gap:+.0f} resources"
+
+
 def create_policy_pool(
     obs_dim: int,
     action_dim: int,
     checkpoint: str,
-    trained_checkpoint: Optional[str],
     device: str,
 ) -> Dict[str, PPOAgent]:
     if not TORCH_AVAILABLE:
@@ -94,15 +146,6 @@ def create_policy_pool(
         "pretrained": pretrained,
         "scratch": scratch,
     }
-
-    if trained_checkpoint:
-        if not os.path.exists(trained_checkpoint):
-            print(f"Optional trained checkpoint not found, skipping: {trained_checkpoint}")
-        else:
-            print(f"Loading trained checkpoint: {trained_checkpoint}")
-            trained = PPOAgent.load(trained_checkpoint, device=device)
-            validate_policy_shape("trained", trained, obs_dim, action_dim)
-            policies["trained"] = trained
 
     for policy in policies.values():
         policy.model.eval()
@@ -142,9 +185,10 @@ def run_live_comparison(
     )
     obs_dim = int(np.prod(env.observation_spaces[env.agents[0]].shape))
     action_dim = int(env.action_spaces[env.agents[0]].n)
-    policies = create_policy_pool(obs_dim, action_dim, checkpoint, trained_checkpoint, device)
-    assignments = build_agent_assignments(env, trained_checkpoint if "trained" in policies else None)
+    policies = create_policy_pool(obs_dim, action_dim, checkpoint, device)
+    assignments = build_agent_assignments(env)
     agent_styles = build_agent_styles(assignments)
+    team_agents = build_team_agents(env)
     learning_enabled = learning_mode.lower() == "on"
 
     env.reset(seed=0)
@@ -159,10 +203,13 @@ def run_live_comparison(
         obstacle_value=env.obstacle_value,
         agent_styles=agent_styles,
     )
+    renderer.setup_team_comparison_view(TEAM_SPECS)
     renderer.setup_live_speed_controls(render_delay)
 
     rows: List[Dict] = []
     cumulative_resources = {agent: 0 for agent in env.agents}
+    episode_resource_history = {str(team["key"]): [] for team in TEAM_SPECS}
+    win_counts = {str(team["key"]): 0 for team in TEAM_SPECS}
 
     for episode in range(num_episodes):
         raw_obs, _ = env.reset(seed=episode)
@@ -177,6 +224,8 @@ def run_live_comparison(
                 policy.reset_buffer()
 
         renderer.reset_communication_visuals()
+        team_metrics = build_team_metrics(team_agents, env.get_resources_collected(), 0, episode_resource_history)
+        renderer.update_team_comparison_view(team_metrics, win_counts, build_comparison_summary(team_metrics))
         renderer.update(
             env.grid.copy(),
             episode + 1,
@@ -250,6 +299,8 @@ def run_live_comparison(
                     )
 
             obs = raw_next_obs
+            team_metrics = build_team_metrics(team_agents, env.get_resources_collected(), step + 1, episode_resource_history)
+            renderer.update_team_comparison_view(team_metrics, win_counts, build_comparison_summary(team_metrics))
             renderer.update(
                 env.grid.copy(),
                 episode + 1,
@@ -276,16 +327,22 @@ def run_live_comparison(
         resources = env.get_resources_collected()
         for agent_id, count in resources.items():
             cumulative_resources[agent_id] += count
+        team_episode_totals = {
+            team_key: int(sum(resources.get(agent_id, 0) for agent_id in agents))
+            for team_key, agents in team_agents.items()
+        }
+        for team_key, total in team_episode_totals.items():
+            episode_resource_history[team_key].append(total)
+        if team_episode_totals["pretrained"] > team_episode_totals["scratch"]:
+            win_counts["pretrained"] += 1
+        elif team_episode_totals["scratch"] > team_episode_totals["pretrained"]:
+            win_counts["scratch"] += 1
 
         if learning_enabled:
-            for policy_type, policy in policies.items():
+            for policy_type in sorted(set(assignments.values())):
+                policy = policies[policy_type]
                 try:
-                    metrics = policy.update(last_value=0.0, last_done=True)
-                    print(
-                        f"Episode {episode + 1} {policy_type}: "
-                        f"policy_loss={metrics.get('policy_loss', 0.0):.4f}, "
-                        f"entropy={metrics.get('entropy', 0.0):.4f}"
-                    )
+                    policy.update(last_value=0.0, last_done=True)
                 except RuntimeError as exc:
                     print(f"[compare-live] PPO update skipped for {policy_type}: {exc}")
 
@@ -298,7 +355,8 @@ def run_live_comparison(
             "policy_resources": episode_policy_resources,
         }
         rows.append(row)
-        renderer.update_learning_plot(episode_reward, sum(resources.values()), resources)
+        team_metrics = build_team_metrics(team_agents, resources, max(1, env.step_count), episode_resource_history)
+        renderer.update_team_comparison_view(team_metrics, win_counts, build_comparison_summary(team_metrics))
         renderer.refresh(render_delay)
         print(
             f"Episode {episode + 1}/{num_episodes}: "
@@ -383,9 +441,9 @@ def write_logs(rows: List[Dict], output_dir: str) -> None:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Live visual comparison of PPO agent types.")
+    parser = argparse.ArgumentParser(description="Live visual comparison of pretrained vs scratch agents.")
     parser.add_argument("--checkpoint", default="checkpoints/simple_env/ppo_latest.pt")
-    parser.add_argument("--trained-checkpoint", default=None)
+    parser.add_argument("--trained-checkpoint", default=None, help=argparse.SUPPRESS)
     parser.add_argument("--learning-mode", choices=("on", "off"), default="off")
     parser.add_argument("--num-episodes", type=int, default=10)
     parser.add_argument("--grid-size", type=int, default=25)

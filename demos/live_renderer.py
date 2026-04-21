@@ -451,7 +451,7 @@ class LiveEpisodeRenderer:
         self.episode_resources: List[float] = []
         self.episode_entropy: List[float] = []
         self.episode_cooperation: List[float] = []
-        self.episode_shares: Dict[str, List[float]] = {
+        self.agent_resource_history: Dict[str, List[float]] = {
             self._agent_id(agent_value): [] for agent_value in self.agent_values
         }
         self.resource_line, = self.ax_plot.plot(
@@ -484,21 +484,29 @@ class LiveEpisodeRenderer:
         self.ax_ppo.set_ylim(0.0, 2.0)
         self.ax_ppo.legend(loc="upper right", framealpha=0.9, fontsize=9)
 
-        self.share_agent_ids = [self._agent_id(agent_value) for agent_value in self.agent_values]
-        self.share_colours = [self._agent_colour(agent_value) for agent_value in self.agent_values]
-        self.share_labels = [f"Agent {self._agent_index(agent_value)}" for agent_value in self.agent_values]
-        self.share_stack_collections = []
-        share_legend_handles = [
-            Rectangle((0, 0), 1, 1, facecolor=colour, edgecolor="none", label=label)
-            for colour, label in zip(self.share_colours, self.share_labels)
+        self.contribution_agent_ids = [self._agent_id(agent_value) for agent_value in self.agent_values]
+        self.contribution_labels = [f"Agent {self._agent_index(agent_value)}" for agent_value in self.agent_values]
+        contribution_colours = [self._agent_colour(agent_value) for agent_value in self.agent_values]
+        contribution_x = np.arange(len(self.contribution_agent_ids))
+        self.contribution_bars = self.ax_opt.bar(
+            contribution_x,
+            np.zeros(len(self.contribution_agent_ids)),
+            color=contribution_colours,
+            width=0.62,
+            label=self.contribution_labels,
+        )
+        self.contribution_value_labels = [
+            self.ax_opt.text(x_pos, 0.0, "0.00", ha="center", va="bottom", fontsize=8.2, color="#111111")
+            for x_pos in contribution_x
         ]
-        self.ax_opt.set_xlim(0, max(1, num_episodes))
-        self._style_ui_axis(self.ax_opt, "Resource Distribution Over Time")
-        self.ax_opt.set_xlabel("Episode")
-        self.ax_opt.set_ylabel("Share of Total Resources")
+        self._style_ui_axis(self.ax_opt, "Average Contribution Per Agent")
+        self.ax_opt.set_xlabel("Agent")
+        self.ax_opt.set_ylabel("Average Resources Collected")
+        self.ax_opt.set_xticks(contribution_x)
+        self.ax_opt.set_xticklabels(self.contribution_labels)
         self.ax_opt.set_ylim(0.0, 1.0)
         self.ax_opt.grid(True, color="#9ca3af", alpha=0.2, linewidth=0.8)
-        self.ax_opt.legend(handles=share_legend_handles, loc="upper right", framealpha=0.9, fontsize=8.5)
+        self.ax_opt.legend(loc="upper right", framealpha=0.9, fontsize=8.5)
 
         self.cooperation_line, = self.ax_coop.plot(
             [],
@@ -663,6 +671,108 @@ class LiveEpisodeRenderer:
                 va="top",
                 linespacing=1.18,
             )
+
+    def setup_team_comparison_view(self, team_specs: List[Dict[str, object]]) -> None:
+        self.comparison_team_specs = team_specs
+        for axis in (self.ax_plot, self.ax_ppo, self.ax_opt, self.ax_coop):
+            axis.clear()
+            axis.set_facecolor("#ffffff")
+            axis.tick_params(colors="#111111", labelsize=8.5)
+            for spine in axis.spines.values():
+                spine.set_color("#bbbbbb")
+
+        self.comparison_team_texts = {}
+        for axis, spec in zip((self.ax_plot, self.ax_ppo), team_specs):
+            team_key = str(spec["key"])
+            team_color = str(spec["color"])
+            axis.set_xlim(0, 1)
+            axis.set_ylim(0, 1)
+            axis.set_xticks([])
+            axis.set_yticks([])
+            axis.set_title(str(spec["title"]), color=team_color, fontsize=12.5, fontweight="bold", pad=10)
+            self.comparison_team_texts[team_key] = axis.text(
+                0.08,
+                0.78,
+                "",
+                color="#111111",
+                fontsize=10.5,
+                va="top",
+                linespacing=1.65,
+            )
+
+        labels = [str(spec["label"]) for spec in team_specs]
+        colors = [str(spec["color"]) for spec in team_specs]
+        x_vals = np.arange(len(team_specs))
+        self.comparison_bars = self.ax_opt.bar(
+            x_vals,
+            np.zeros(len(team_specs)),
+            color=colors,
+            width=0.56,
+            label=labels,
+        )
+        self.comparison_bar_labels = [
+            self.ax_opt.text(x_val, 0.0, "0.00", ha="center", va="bottom", fontsize=8.5, color="#111111")
+            for x_val in x_vals
+        ]
+        self.ax_opt.set_title("Average Resources Per Episode", color="#f5f5f5", fontsize=11.5, fontweight="bold", pad=9)
+        self.ax_opt.set_xticks(x_vals)
+        self.ax_opt.set_xticklabels(labels, color="#f5f5f5")
+        self.ax_opt.set_ylabel("Average Resources", color="#f5f5f5")
+        self.ax_opt.set_ylim(0.0, 1.0)
+        self.ax_opt.grid(True, axis="y", color="#9ca3af", alpha=0.2, linewidth=0.8)
+        self.ax_opt.legend(loc="upper right", framealpha=0.9, fontsize=8.5)
+
+        self.ax_coop.set_xlim(0, 1)
+        self.ax_coop.set_ylim(0, 1)
+        self.ax_coop.set_xticks([])
+        self.ax_coop.set_yticks([])
+        self.ax_coop.set_title("Comparison Summary", color="#f5f5f5", fontsize=11.5, fontweight="bold", pad=9)
+        self.comparison_summary_text = self.ax_coop.text(
+            0.08,
+            0.78,
+            "",
+            color="#111111",
+            fontsize=11,
+            va="top",
+            linespacing=1.65,
+        )
+
+    def update_team_comparison_view(
+        self,
+        team_metrics: Dict[str, Dict[str, float]],
+        win_counts: Dict[str, int],
+        summary_text: str,
+    ) -> None:
+        if not hasattr(self, "comparison_team_specs"):
+            return
+
+        avg_values = []
+        for spec in self.comparison_team_specs:
+            team_key = str(spec["key"])
+            metrics = team_metrics.get(team_key, {})
+            total = float(metrics.get("total_resources", 0.0))
+            average = float(metrics.get("average_per_agent", 0.0))
+            efficiency = float(metrics.get("efficiency", 0.0))
+            avg_per_episode = float(metrics.get("average_per_episode", 0.0))
+            avg_values.append(avg_per_episode)
+            self.comparison_team_texts[team_key].set_text(
+                f"Total resources: {total:.0f}\n"
+                f"Average per agent: {average:.2f}\n"
+                f"Efficiency: {efficiency:.3f} resources/step"
+            )
+
+        top = max(avg_values, default=0.0)
+        self.ax_opt.set_ylim(0.0, max(1.0, top * 1.2))
+        for bar, label, value in zip(self.comparison_bars, self.comparison_bar_labels, avg_values):
+            bar.set_height(value)
+            label.set_position((bar.get_x() + bar.get_width() / 2.0, value))
+            label.set_text(f"{value:.2f}")
+
+        wins_lines = [
+            f"{str(spec['label'])} wins: {int(win_counts.get(str(spec['key']), 0))}"
+            for spec in self.comparison_team_specs
+        ]
+        self.comparison_summary_text.set_text("\n".join(wins_lines + ["", summary_text]))
 
     def update_hud(self, hud_state: Optional[Dict[str, object]]) -> None:
         if hud_state is None:
@@ -1146,8 +1256,7 @@ class LiveEpisodeRenderer:
         self.episode_rewards.append(float(total_reward))
         self.episode_resources.append(float(total_resources))
         self._append_cooperation_metrics(per_agent_resources)
-        self._append_agent_shares(per_agent_resources)
-        self._update_agent_share_area()
+        self._update_agent_contribution_bars(per_agent_resources)
         if len(self.episode_resources) % self.plot_update_every != 0:
             return
 
@@ -1186,39 +1295,19 @@ class LiveEpisodeRenderer:
 
         self.episode_cooperation.append(float(np.clip(cooperation_score, 0.0, 1.0)))
 
-    def _append_agent_shares(self, per_agent_resources: Optional[Dict[str, float]]) -> None:
+    def _update_agent_contribution_bars(self, per_agent_resources: Optional[Dict[str, float]]) -> None:
         resources = per_agent_resources or {}
-        total = float(sum(float(resources.get(agent_id, 0.0)) for agent_id in self.episode_shares))
-        for agent_id, shares in self.episode_shares.items():
-            if total > 0.0:
-                share = float(resources.get(agent_id, 0.0)) / total
-            else:
-                share = 0.0
-            shares.append(share)
+        averages = []
+        for agent_id in self.contribution_agent_ids:
+            self.agent_resource_history[agent_id].append(float(resources.get(agent_id, 0.0)))
+            averages.append(float(np.mean(self.agent_resource_history[agent_id])))
 
-    def _update_agent_share_area(self) -> None:
-        if not self.episode_shares:
-            return
-        episode_count = max((len(shares) for shares in self.episode_shares.values()), default=0)
-        if episode_count == 0:
-            return
-
-        x_vals = list(range(episode_count))
-        plot_x = x_vals[:: self.plot_downsample] or x_vals[-1:]
-        stack_values = []
-        for agent_id in self.share_agent_ids:
-            smoothed_share = self._moving_avg(self.episode_shares[agent_id], 50)
-            stack_values.append(smoothed_share[:: self.plot_downsample] or smoothed_share[-1:])
-
-        for collection in self.share_stack_collections:
-            collection.remove()
-        self.share_stack_collections = self.ax_opt.stackplot(
-            plot_x,
-            *stack_values,
-            colors=self.share_colours,
-            alpha=0.82,
-            linewidth=0.0,
-        )
+        top = max(averages, default=0.0)
+        self.ax_opt.set_ylim(0.0, max(1.0, top * 1.18))
+        for bar, label, value in zip(self.contribution_bars, self.contribution_value_labels, averages):
+            bar.set_height(value)
+            label.set_position((bar.get_x() + bar.get_width() / 2.0, value))
+            label.set_text(f"{value:.2f}")
 
     def _update_cooperation_lines(self, x_vals: List[int]) -> None:
         smoothed_cooperation = self._moving_avg(self.episode_cooperation, 50)
