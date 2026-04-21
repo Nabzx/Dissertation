@@ -547,7 +547,12 @@ class LiveEpisodeRenderer:
         self.ax_coop.legend(loc="lower right", frameon=False, fontsize=9)
 
         self.fig.subplots_adjust(left=0.035, right=0.95, top=0.91, bottom=0.18)
+        self._shift_environment_axis_right()
         self._update_env(initial_grid)
+
+    def _shift_environment_axis_right(self) -> None:
+        pos = self.ax_grid.get_subplotspec().get_position(self.fig)
+        self.ax_grid.set_position([pos.x0 + 0.018, pos.y0, pos.width, pos.height])
 
     def _add_figure_background(self) -> None:
         bg_axis = self.fig.add_axes([0, 0, 1, 1], zorder=-10)
@@ -1302,6 +1307,7 @@ class LiveEpisodeRenderer:
     def setup_live_speed_controls(self, initial_delay: float) -> None:
         self.set_speed_delay(initial_delay)
         self.fig.subplots_adjust(bottom=0.24)
+        self._shift_environment_axis_right()
 
         ax_speed = self.fig.add_axes([0.08, 0.06, 0.46, 0.025])
         self.live_speed_slider = Slider(
@@ -1347,6 +1353,7 @@ class PlaybackController:
         self.updating_sliders = False
 
         self.renderer.fig.subplots_adjust(bottom=0.24)
+        self.renderer._shift_environment_axis_right()
         self._create_controls()
         self._connect_keys()
         self._show_frame()
