@@ -485,24 +485,21 @@ class LiveEpisodeRenderer:
         self.ax_ppo.set_ylim(0.0, 2.0)
         self.ax_ppo.legend(loc="upper right", frameon=False, fontsize=9)
 
-        self.share_lines = {}
-        for agent_value in self.agent_values:
-            agent_id = self._agent_id(agent_value)
-            agent_idx = self._agent_index(agent_value)
-            self.share_lines[agent_id], = self.ax_opt.plot(
-                [],
-                [],
-                color=self._agent_colour(agent_value),
-                linewidth=2.0,
-                label=f"Agent {agent_idx}",
-            )
+        self.share_agent_ids = [self._agent_id(agent_value) for agent_value in self.agent_values]
+        self.share_colours = [self._agent_colour(agent_value) for agent_value in self.agent_values]
+        self.share_labels = [f"Agent {self._agent_index(agent_value)}" for agent_value in self.agent_values]
+        self.share_stack_collections = []
+        share_legend_handles = [
+            Rectangle((0, 0), 1, 1, facecolor=colour, edgecolor="none", label=label)
+            for colour, label in zip(self.share_colours, self.share_labels)
+        ]
         self.ax_opt.set_xlim(0, max(1, num_episodes))
-        self._style_ui_axis(self.ax_opt, "Agent Contribution Share")
+        self._style_ui_axis(self.ax_opt, "Resource Distribution Over Time")
         self.ax_opt.set_xlabel("Episode")
         self.ax_opt.set_ylabel("Share of Total Resources")
         self.ax_opt.set_ylim(0.0, 1.0)
         self.ax_opt.grid(True, color="#9ca3af", alpha=0.2, linewidth=0.8)
-        self.ax_opt.legend(loc="upper right", frameon=False, fontsize=8.5)
+        self.ax_opt.legend(handles=share_legend_handles, loc="upper right", frameon=False, fontsize=8.5)
 
         self.fairness_line, = self.ax_coop.plot(
             [],
@@ -1157,7 +1154,7 @@ class LiveEpisodeRenderer:
         self.episode_resources.append(float(total_resources))
         self._append_cooperation_metrics(per_agent_resources)
         self._append_agent_shares(per_agent_resources)
-        self._update_agent_share_lines()
+        self._update_agent_share_area()
         if len(self.episode_resources) % self.plot_update_every != 0:
             return
 
@@ -1209,7 +1206,7 @@ class LiveEpisodeRenderer:
                 share = 0.0
             shares.append(share)
 
-    def _update_agent_share_lines(self) -> None:
+    def _update_agent_share_area(self) -> None:
         if not self.episode_shares:
             return
         episode_count = max((len(shares) for shares in self.episode_shares.values()), default=0)
@@ -1218,10 +1215,20 @@ class LiveEpisodeRenderer:
 
         x_vals = list(range(episode_count))
         plot_x = x_vals[:: self.plot_downsample] or x_vals[-1:]
-        for agent_id, line in self.share_lines.items():
+        stack_values = []
+        for agent_id in self.share_agent_ids:
             smoothed_share = self._moving_avg(self.episode_shares[agent_id], 50)
-            plot_share = smoothed_share[:: self.plot_downsample] or smoothed_share[-1:]
-            line.set_data(plot_x, plot_share)
+            stack_values.append(smoothed_share[:: self.plot_downsample] or smoothed_share[-1:])
+
+        for collection in self.share_stack_collections:
+            collection.remove()
+        self.share_stack_collections = self.ax_opt.stackplot(
+            plot_x,
+            *stack_values,
+            colors=self.share_colours,
+            alpha=0.82,
+            linewidth=0.0,
+        )
 
     def _update_cooperation_lines(self, x_vals: List[int]) -> None:
         fairness_smoothed = self._moving_avg_skip_nan(self.fairness_values, self.smoothing_window)
