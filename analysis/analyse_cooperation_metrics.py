@@ -1,18 +1,8 @@
-"""
-Compute cooperation and performance metrics from headless PPO training output.
-
-The input is the JSON metrics file produced by train_headless.py. Outputs:
-- per-episode CSV with cooperation metrics
-- per-episode JSON with the same metrics
-- summary JSON with aggregate statistics
-"""
-
 from __future__ import annotations
 
 import argparse
 import csv
 import json
-import math
 import os
 from statistics import mean, median, pstdev
 from typing import Dict, Iterable, List
@@ -54,7 +44,7 @@ def compute_episode_metrics(
         efficiency = collected / available if available > 0 else 0.0
         fairness = jains_fairness_index(agent_counts.values())
         balance_gap = max(agent_counts.values(), default=0) - min(agent_counts.values(), default=0)
-        normalized_balance_gap = balance_gap / collected if collected > 0 else 0.0
+        normalised_balance_gap = balance_gap / collected if collected > 0 else 0.0
         cooperation_score = efficiency * fairness
         survival = {agent: count > 0 for agent, count in agent_counts.items()}
         all_survived = all(survival.values()) if survival else False
@@ -70,7 +60,7 @@ def compute_episode_metrics(
             "jain_fairness": fairness,
             "cooperation_score": cooperation_score,
             "balance_gap": balance_gap,
-            "normalized_balance_gap": normalized_balance_gap,
+            "normalized_balance_gap": normalised_balance_gap,
             "agent_survival": survival,
             "all_survived": all_survived,
             "any_survived": any_survived,
@@ -182,7 +172,7 @@ def write_csv(path: str, rows: List[Dict]) -> None:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Analyze multi-agent cooperation metrics.")
+    parser = argparse.ArgumentParser(description="Analyse multi-agent cooperation metrics.")
     parser.add_argument("--input", default="results/headless_training_metrics_10000.json")
     parser.add_argument("--per-episode-csv", default="results/cooperation_metrics_10000.csv")
     parser.add_argument("--per-episode-json", default="results/cooperation_metrics_10000.json")
@@ -208,7 +198,7 @@ def main() -> None:
     write_json(args.per_episode_json, per_episode)
     write_json(args.summary_json, summary)
 
-    print(f"Analyzed {len(per_episode)} episodes")
+    print(f"Analysed {len(per_episode)} episodes")
     print(f"Saved per-episode CSV: {args.per_episode_csv}")
     print(f"Saved per-episode JSON: {args.per_episode_json}")
     print(f"Saved summary JSON: {args.summary_json}")

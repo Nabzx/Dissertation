@@ -1,21 +1,20 @@
-"""
-Continuous PPO training runner with optional fast episode visualisation.
-
-Usage:
-    python3 train_and_watch.py
-"""
-
 from __future__ import annotations
 
+import sys
+from pathlib import Path
 from typing import Dict, List, Optional
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 import numpy as np
 
 from env.gridworld_env import GridWorldEnv
-from testing.communication import CommunicationLayer
-from testing.ppo_agent import PPOAgent
+from agents.communication import CommunicationLayer
+from agents.ppo_agent import PPOAgent
 from train.run_simulation import run_episode
-from visualize_episode import animate_episode
+from demos.visualise_episode import animate_episode
 
 
 def train_and_watch(
@@ -30,24 +29,6 @@ def train_and_watch(
     render_interval: int = 50,
     save_gif_dir: Optional[str] = None,
 ) -> List[Dict]:
-    """
-    Train one persistent PPO agent across many episodes and optionally render
-    selected episodes at high speed.
-
-    Args:
-        num_episodes: Number of training episodes to run
-        render_every: Render every N episodes; set <= 0 to disable rendering
-        reward_scheme: Reward shaping scheme passed to the episode runner
-        use_communication: Whether to append the communication vector to PPO observations
-        grid_size: Grid side length
-        num_resources: Number of resources spawned per episode
-        max_steps: Maximum steps per episode
-        render_interval: Animation delay in milliseconds for rendered episodes
-        save_gif_dir: Optional directory for saving rendered GIFs
-
-    Returns:
-        List of episode summaries
-    """
     env = GridWorldEnv(
         grid_size=grid_size,
         num_resources=num_resources,
@@ -55,13 +36,12 @@ def train_and_watch(
         max_steps=max_steps,
     )
 
-    obs_shape = env.observation_spaces[env.agents[0]].shape
-    obs_dim = int(np.prod(obs_shape))
+    obs_size = env.observation_spaces[env.agents[0]].shape
+    obs_dim = int(np.prod(obs_size))
     if use_communication:
         obs_dim += int(CommunicationLayer(env).config.max_ints)
     action_dim = int(env.action_spaces[env.agents[0]].n)
 
-    # One persistent PPO agent shared across all episodes so it can keep learning.
     ppo_agent = PPOAgent(obs_dim=obs_dim, n_actions=action_dim, device="cpu")
 
     episode_summaries: List[Dict] = []

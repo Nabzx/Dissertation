@@ -1,24 +1,22 @@
-"""
-Headless PPO training pipeline with checkpointing.
-
-This script intentionally does not import or use the live renderer. It trains
-one persistent PPOAgent across many episodes, writes lightweight metrics, and
-saves checkpoints that can later be loaded by demo_trained_agent.py.
-"""
-
 from __future__ import annotations
 
 import argparse
 import csv
 import json
 import os
+import sys
+from pathlib import Path
 from typing import Dict, List
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 import numpy as np
 
 from env.gridworld_env import GridWorldEnv
-from testing.communication import CommunicationLayer
-from testing.ppo_agent import PPOAgent, TORCH_AVAILABLE
+from agents.communication import CommunicationLayer
+from agents.ppo_agent import PPOAgent, TORCH_AVAILABLE
 from train.run_simulation import run_episode
 
 
@@ -38,9 +36,6 @@ def train_headless(
     max_steps: int = 250,
     device: str = "cpu",
 ) -> List[Dict]:
-    """
-    Train PPO without rendering and periodically save model checkpoints.
-    """
     if not TORCH_AVAILABLE:
         raise RuntimeError("Headless PPO training requires PyTorch.")
 
@@ -64,7 +59,7 @@ def train_headless(
 
     ppo_agent = PPOAgent(obs_dim=obs_dim, n_actions=action_dim, device=device)
     metrics: List[Dict] = []
-    _initialise_csv(csv_path)
+    _make_csv(csv_path)
 
     for episode in range(num_episodes):
         episode_data = run_episode(
@@ -86,16 +81,16 @@ def train_headless(
         total_resources = int(sum(resources.values()))
         total_reward = float(episode_data["total_shaped_reward"])
         ppo_metrics = episode_data.get("ppo_metrics") or {}
-        reward_ma = _moving_average_value(metrics, "total_reward", total_reward, smoothing_window)
-        resources_ma = _moving_average_value(metrics, "total_resources", total_resources, smoothing_window)
-        entropy_ma = _moving_average_metric(metrics, "entropy", ppo_metrics.get("entropy", 0.0), smoothing_window)
-        policy_loss_ma = _moving_average_metric(
+        reward_ma = _moving_avg_value(metrics, "total_reward", total_reward, smoothing_window)
+        resources_ma = _moving_avg_value(metrics, "total_resources", total_resources, smoothing_window)
+        entropy_ma = _moving_avg_metric(metrics, "entropy", ppo_metrics.get("entropy", 0.0), smoothing_window)
+        policy_loss_ma = _moving_avg_metric(
             metrics,
             "policy_loss",
             ppo_metrics.get("policy_loss", 0.0),
             smoothing_window,
         )
-        value_loss_ma = _moving_average_metric(
+        value_loss_ma = _moving_avg_metric(
             metrics,
             "value_loss",
             ppo_metrics.get("value_loss", 0.0),
@@ -153,7 +148,7 @@ def _write_metrics(path: str, metrics: List[Dict]) -> None:
         json.dump(metrics, f, indent=2)
 
 
-def _moving_average_value(
+def _moving_avg_value(
     previous_rows: List[Dict],
     key: str,
     current_value: float,
@@ -164,7 +159,7 @@ def _moving_average_value(
     return float(np.mean(values)) if values else 0.0
 
 
-def _moving_average_metric(
+def _moving_avg_metric(
     previous_rows: List[Dict],
     metric_key: str,
     current_value: float,
@@ -199,7 +194,7 @@ def _csv_fields() -> List[str]:
     ]
 
 
-def _initialise_csv(path: str) -> None:
+def _make_csv(path: str) -> None:
     with open(path, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=_csv_fields())
         writer.writeheader()

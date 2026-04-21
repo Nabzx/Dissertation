@@ -1,23 +1,22 @@
-"""
-Load a trained PPO checkpoint and render evaluation episodes.
-
-This script does not train or update PPO. It is only for visualizing a saved
-policy checkpoint produced by train_headless.py.
-"""
-
 from __future__ import annotations
 
 import argparse
 import os
+import sys
+from pathlib import Path
 from typing import Optional
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 import numpy as np
 
 from env.gridworld_env import GridWorldEnv
-from testing.communication import CommunicationLayer
-from testing.ppo_agent import PPOAgent, TORCH_AVAILABLE
+from agents.communication import CommunicationLayer
+from agents.ppo_agent import PPOAgent, TORCH_AVAILABLE
 from train.run_simulation import run_episode
-from visualize_episode import animate_episode
+from demos.visualise_episode import animate_episode
 
 
 def demo_trained_agent(
@@ -35,9 +34,6 @@ def demo_trained_agent(
     device: str = "cpu",
     environment_name: str = "main_arena",
 ) -> None:
-    """
-    Load a trained PPO policy and visualize it without further training.
-    """
     if not TORCH_AVAILABLE:
         raise RuntimeError("Demoing a trained PPO checkpoint requires PyTorch.")
 
@@ -57,10 +53,11 @@ def demo_trained_agent(
     action_dim = int(env.action_spaces[env.agents[0]].n)
 
     if ppo_agent.obs_dim != expected_obs_dim or ppo_agent.n_actions != action_dim:
+        checkpoint_shape = (ppo_agent.obs_dim, ppo_agent.n_actions)
+        expected_shape = (expected_obs_dim, action_dim)
         raise ValueError(
             "Checkpoint shape does not match this environment/demo config. "
-            f"Checkpoint obs/action=({ppo_agent.obs_dim}, {ppo_agent.n_actions}); "
-            f"expected=({expected_obs_dim}, {action_dim})."
+            f"Checkpoint obs/action={checkpoint_shape}; expected={expected_shape}."
         )
 
     for episode in range(num_episodes):
@@ -86,10 +83,11 @@ def demo_trained_agent(
             f"resources={resources}, total_reward={total_reward:.2f}"
         )
 
-        save_path = None
         if save_gif_dir is not None:
             os.makedirs(save_gif_dir, exist_ok=True)
             save_path = os.path.join(save_gif_dir, f"trained_episode_{episode + 1:03d}.gif")
+        else:
+            save_path = None
 
         animate_episode(
             episode_data["grid_sequence"],
@@ -100,7 +98,7 @@ def demo_trained_agent(
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Visualize a trained PPO checkpoint.")
+    parser = argparse.ArgumentParser(description="Visualise a trained PPO checkpoint.")
     parser.add_argument("--checkpoint", default="checkpoints/ppo_latest.pt")
     parser.add_argument("--num-episodes", type=int, default=5)
     parser.add_argument("--reward-scheme", default="selfish")

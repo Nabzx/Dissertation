@@ -1,26 +1,16 @@
-"""Capture the Flag minigame for the GridWorld arena."""
-
 from __future__ import annotations
 
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
-from minigames.base_game import GameMode
+from minigames.base_game import ArenaScenario
 
 
 Position = Tuple[int, int]
 
 
-class CaptureFlagGame(GameMode):
-    """
-    Competitive race mode where the first agent to reach a flag wins.
-
-    The wrapped environment still handles normal movement, obstacles, arena
-    bounds, and observations. This game mode adds a separate flag target,
-    custom rewards, and a winner-based termination condition.
-    """
-
+class CaptureFlagGame(ArenaScenario):
     def __init__(
         self,
         env,
@@ -42,24 +32,22 @@ class CaptureFlagGame(GameMode):
 
     def reset(self):
         self._spawn_teams_near_bottom()
-        self.flag_position = self._sample_flag_position()
+        self.flag_position = self._pick_flag_pos()
         self.winner = None
         self.done = False
-        self.current_distances = self._compute_distances()
+        self.current_distances = self._get_dists()
         self.previous_distances = self.current_distances.copy()
         self.last_rewards = {agent: 0.0 for agent in self.env.agents}
         return None
 
     def step(self, actions):
         if self.flag_position is None:
-            self.flag_position = self._sample_flag_position()
+            self.flag_position = self._pick_flag_pos()
 
-        # GameModeWrapper calls this after env.step(), so positions here are
-        # post-movement. Winner detection therefore reflects the current move.
-        self.current_distances = self._compute_distances()
+        self.current_distances = self._get_dists()
         self.winner = self._find_winner()
         self.done = self.winner is not None
-        self.last_rewards = self._build_rewards()
+        self.last_rewards = self._get_rewards()
         self.previous_distances = self.current_distances.copy()
         if not self.done:
             return {
@@ -67,10 +55,10 @@ class CaptureFlagGame(GameMode):
             }
         return None
 
-    def compute_rewards(self):
+    def compute_arena_rewards(self):
         return self.last_rewards.copy()
 
-    def is_done(self):
+    def is_round_done(self):
         return self.done
 
     def get_metrics(self):
@@ -83,7 +71,7 @@ class CaptureFlagGame(GameMode):
             "done": self.done,
         }
 
-    def get_render_info(self):
+    def get_arena_render_info(self):
         return {
             "mode": "capture_flag",
             "flag_position": self.flag_position,
@@ -94,8 +82,7 @@ class CaptureFlagGame(GameMode):
             "winner_highlight": self.winner is not None,
         }
 
-    def _sample_flag_position(self) -> Position:
-        """Pick an empty in-arena tile in the top 30% of the arena."""
+    def _pick_flag_pos(self) -> Position:
         arena_mask = getattr(self.env, "arena_mask", np.ones_like(self.env.grid, dtype=bool))
         top_limit = max(1, int(self.env.grid_size * 0.30))
         top_mask = np.zeros_like(arena_mask, dtype=bool)
@@ -111,16 +98,16 @@ class CaptureFlagGame(GameMode):
 
         return valid_cells[np.random.randint(0, len(valid_cells))]
 
-    def _compute_distances(self) -> Dict[str, int]:
+    def _get_dists(self) -> Dict[str, int]:
         if self.flag_position is None:
             return {agent: 0 for agent in self.env.agents}
 
         flag_row, flag_col = self.flag_position
-        distances = {}
+        dists = {}
         for agent, position in self.env.agent_positions.items():
             row, col = position
-            distances[agent] = abs(row - flag_row) + abs(col - flag_col)
-        return distances
+            dists[agent] = abs(row - flag_row) + abs(col - flag_col)
+        return dists
 
     def _find_winner(self) -> Optional[str]:
         if self.flag_position is None:
@@ -131,7 +118,7 @@ class CaptureFlagGame(GameMode):
                 return agent
         return None
 
-    def _build_rewards(self) -> Dict[str, float]:
+    def _get_rewards(self) -> Dict[str, float]:
         rewards = {}
         for agent in self.env.agents:
             reward = self.step_penalty
@@ -148,13 +135,12 @@ class CaptureFlagGame(GameMode):
         return rewards
 
     def _build_teams(self) -> Dict[str, str]:
-        teams = {}
-        for idx, agent in enumerate(self.env.agents):
-            teams[agent] = "Team A" if idx < 2 else "Team B"
-        return teams
+        return {
+            agent: "Team A" if idx < 2 else "Team B"
+            for idx, agent in enumerate(self.env.agents)
+        }
 
     def _spawn_teams_near_bottom(self) -> None:
-        """Place each two-agent team in adjacent valid cells near the bottom."""
         for agent, position in self.env.agent_positions.items():
             if self.env.grid[position[0], position[1]] == self.env.agent_value(agent):
                 self.env.grid[position[0], position[1]] = 0
@@ -179,11 +165,13 @@ class CaptureFlagGame(GameMode):
                 self.env.grid[position[0], position[1]] = self.env.agent_value(agent)
                 used.add(position)
 
-        if hasattr(self.env, "heatmaps"):
-            for heatmap in self.env.heatmaps.values():
-                heatmap[:, :] = 0
-            for agent, position in self.env.agent_positions.items():
-                self.env.heatmaps[agent][position[0], position[1]] += 1
+        if not hasattr(self.env, "heatmaps"):
+            return
+
+        for heatmap in self.env.heatmaps.values():
+            heatmap[:, :] = 0
+        for agent, position in self.env.agent_positions.items():
+            self.env.heatmaps[agent][position[0], position[1]] += 1
 
     def _sample_adjacent_spawn_group(
         self,

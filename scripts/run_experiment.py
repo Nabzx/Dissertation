@@ -1,15 +1,12 @@
-"""
-Configurable experiment runner for multi-agent simulations.
-
-Run different combinations of agent_type and reward_scheme without editing code.
-
-Example:
-    python run_experiment.py --agent_type ppo --reward_scheme mixed --num_episodes 20
-"""
-
 from __future__ import annotations
 
 import argparse
+import sys
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 import numpy as np
 
@@ -92,7 +89,6 @@ def main() -> None:
         results_dir=f"results/{run_tag}",
     )
 
-    # Summary statistics
     total_resources = [sum(ep["resources_collected"].values()) for ep in episode_data]
     mean_resources = float(np.mean(total_resources)) if total_resources else 0.0
 

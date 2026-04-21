@@ -1,14 +1,10 @@
-"""
-Utilities for animating a single gridworld episode.
-"""
-
 from __future__ import annotations
 
 import os
 from typing import List, Optional
 
 import matplotlib.pyplot as plt
-import numpy as np 
+import numpy as np
 from matplotlib import animation
 from matplotlib.colors import BoundaryNorm, ListedColormap
 
@@ -19,26 +15,14 @@ def animate_episode(
     interval: int = 200,
     block: bool = True,
 ):
-    """
-    Animate a sequence of grid states for one episode.
-
-    Args:
-        grid_sequence: List of 2D numpy arrays representing grid states over time
-        save_path: Optional output path for a GIF
-        interval: Delay between frames in milliseconds
-        block: Whether to block execution while the animation window is shown
-
-    Returns:
-        The matplotlib animation object
-    """
     if not grid_sequence:
         raise ValueError("grid_sequence must contain at least one grid state.")
 
     max_value = int(max(np.max(frame) for frame in grid_sequence))
-    base_colors = ["white", "green", "blue", "red", "orange", "purple", "dimgray"]
-    if max_value + 1 > len(base_colors):
-        base_colors.extend(["cyan", "magenta", "yellow", "brown"][: max_value + 1 - len(base_colors)])
-    cmap = ListedColormap(base_colors[: max_value + 1])
+    base_colours = ["white", "green", "blue", "red", "orange", "purple", "dimgray"]
+    if max_value + 1 > len(base_colours):
+        base_colours.extend(["cyan", "magenta", "yellow", "brown"][: max_value + 1 - len(base_colours)])
+    cmap = ListedColormap(base_colours[: max_value + 1])
     norm = BoundaryNorm(np.arange(-0.5, max_value + 1.5, 1.0), cmap.N)
 
     fig, ax = plt.subplots(figsize=(8, 8))
@@ -67,9 +51,9 @@ def animate_episode(
     )
 
     if save_path is not None:
-        save_dir = os.path.dirname(save_path)
-        if save_dir:
-            os.makedirs(save_dir, exist_ok=True)
+        output_dir = os.path.dirname(save_path)
+        if output_dir:
+            os.makedirs(output_dir, exist_ok=True)
         ani.save(save_path, writer="pillow")
 
     plt.show(block=block)

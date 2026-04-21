@@ -1,29 +1,19 @@
-"""
-Main entry point for the multi-agent resource-scarcity simulation.
-
-This script runs simulations and generates preliminary results.
-"""
-
 from train.run_simulation import run_batch_simulation
 from train.generate_preliminary_results import generate_preliminary_results
 
 
 def main():
-    """
-    Main function to run simulations and generate results.
-    """
     print("=" * 60)
     print("Multi-Agent Resource-Scarcity Simulation")
     print("=" * 60)
     print()
 
-    # Configuration
     num_episodes = 20
     grid_size = 15
     num_resources = 10
     max_steps = 200
-    agent_type = "heuristic"  # change to "ppo" to enable RL
-    reward_scheme = "selfish"  # selfish | mixed | fully_cooperative
+    agent_type = "heuristic"
+    reward_scheme = "selfish"
     run_tag = f"{agent_type}_{reward_scheme}"
 
     print("Configuration:")
@@ -35,7 +25,6 @@ def main():
     print(f"  Reward Scheme: {reward_scheme}")
     print()
 
-    # Run simulations
     print("Step 1: Running simulations...")
     print("-" * 60)
     episode_data = run_batch_simulation(
@@ -50,7 +39,6 @@ def main():
     )
     print()
 
-    # Generate preliminary results
     print("Step 2: Generating preliminary results...")
     print("-" * 60)
     generate_preliminary_results(
@@ -82,4 +70,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

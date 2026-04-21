@@ -1,11 +1,3 @@
-"""
-Evaluate a pretrained PPO checkpoint against an untrained PPO policy.
-
-Both policies are evaluated in the main Hunger Games arena with learning
-disabled. This isolates whether pretraining in the simple environment transfers
-to the harder deployment arena.
-"""
-
 from __future__ import annotations
 
 import argparse
@@ -13,14 +5,19 @@ import csv
 import json
 import os
 import sys
+from pathlib import Path
 from statistics import mean, pstdev
 from typing import Dict, List
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 import numpy as np
 
 from env.gridworld_env import GridWorldEnv
-from testing.communication import CommunicationLayer
-from testing.ppo_agent import PPOAgent, TORCH_AVAILABLE
+from agents.communication import CommunicationLayer
+from agents.ppo_agent import PPOAgent, TORCH_AVAILABLE
 from train.run_simulation import run_episode
 
 
@@ -160,7 +157,7 @@ def main() -> None:
         print()
         print("Pretrained checkpoint not found.")
         print("Run pretraining first to generate the checkpoint:")
-        print("python3 train_simple_env.py --num-episodes 5000")
+        print("python3 scripts/train_simple_env.py --num-episodes 5000")
         print()
         print(f"Expected checkpoint path: {args.checkpoint}")
         sys.exit(1)

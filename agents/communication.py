@@ -20,7 +20,7 @@ Bandwidth limit:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import numpy as np
 
@@ -137,20 +137,33 @@ class CommunicationLayer:
             augmented[agent] = np.concatenate([flat, msg], axis=0)
         return augmented
 
-    def update_messages_after_step(self) -> None:
+    def update_messages_after_step(self, active_agents: Optional[List[str]] = None) -> Dict[str, np.ndarray]:
         """
         After the environment step, compute *new* messages for each agent
         and deliver them to the other agent. These messages will be used
         for the next decision step.
+
+        Returns:
+            Messages whose payload changed compared with what receivers already
+            had. The environment still delivers all messages internally, but
+            renderers can use this return value to show only real communication
+            events instead of constant fake signals.
         """
+        senders = active_agents if active_agents is not None else self.env.agents
         new_messages: Dict[str, np.ndarray] = {}
-        for agent in self.env.agents:
+        for agent in senders:
             new_messages[agent] = self._compute_message_for_agent(agent)
 
+        changed_messages: Dict[str, np.ndarray] = {}
+
         # Deliver each agent's message to all *other* agents.
-        for agent in self.env.agents:
+        for agent in senders:
             for other in self.env.agents:
                 if other == agent:
                     continue
+                previous_msg = self.state.last_messages.get(other)
+                if previous_msg is None or not np.array_equal(previous_msg, new_messages[agent]):
+                    changed_messages[agent] = new_messages[agent].copy()
                 self.state.last_messages[other] = new_messages[agent].copy()
 
+        return changed_messages

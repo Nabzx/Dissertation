@@ -1,41 +1,21 @@
-"""
-Generate preliminary results and analysis from simulation data.
-
-This script processes episode data and generates:
-- Survival rates
-- Cooperation scores
-- Resource distribution heatmaps
-- Movement heatmaps
-- Screenshot montages
-"""
-
 import json
 import os
+from pathlib import Path
+from typing import Dict, List
+
 import numpy as np
 import matplotlib.pyplot as plt
-from typing import List, Dict
-from pathlib import Path
 
 from env.utils import save_heatmap, save_movement_heatmap, save_reward_curve
 
 
 def load_episode_data(logs_dir: str = "logs/episodes") -> List[Dict]:
-    """
-    Load all episode data from JSON files.
-
-    Args:
-        logs_dir: Directory containing episode JSON files
-
-    Returns:
-        List of episode data dictionaries
-    """
     episode_data = []
 
     if not os.path.exists(logs_dir):
         print(f"Warning: {logs_dir} does not exist. No episodes to process.")
         return episode_data
 
-    # Find all episode JSON files
     episode_files = sorted(Path(logs_dir).glob("episode_*.json"))
 
     for episode_file in episode_files:
@@ -47,15 +27,6 @@ def load_episode_data(logs_dir: str = "logs/episodes") -> List[Dict]:
 
 
 def calculate_survival_rate(episode_data: List[Dict]) -> Dict[str, float]:
-    """
-    Calculate survival rates for agents.
-
-    Args:
-        episode_data: List of episode data dictionaries
-
-    Returns:
-        Dict with survival rate statistics
-    """
     if len(episode_data) == 0:
         return {
             "agent_0_survival_rate": 0.0,
@@ -81,17 +52,6 @@ def calculate_survival_rate(episode_data: List[Dict]) -> Dict[str, float]:
 
 
 def calculate_cooperation_scores(episode_data: List[Dict]) -> Dict[str, float]:
-    """
-    Calculate cooperation scores for each episode.
-
-    Cooperation = min(agent1_resources, agent2_resources) / max(1, total_resources_spawned)
-
-    Args:
-        episode_data: List of episode data dictionaries
-
-    Returns:
-        Dict with cooperation score statistics
-    """
     if len(episode_data) == 0:
         return {
             "average_cooperation": 0.0,
@@ -118,43 +78,22 @@ def calculate_cooperation_scores(episode_data: List[Dict]) -> Dict[str, float]:
 
 
 def aggregate_heatmaps(episode_data: List[Dict], grid_size: int = 15) -> Dict[str, np.ndarray]:
-    """
-    Aggregate heatmaps across all episodes.
-
-    Args:
-        episode_data: List of episode data dictionaries
-        grid_size: Size of the grid
-
-    Returns:
-        Dict mapping agent IDs to aggregated heatmap arrays
-    """
-    aggregated = {
+    total_heatmaps = {
         "agent_0": np.zeros((grid_size, grid_size), dtype=np.int32),
         "agent_1": np.zeros((grid_size, grid_size), dtype=np.int32),
     }
 
-    # Aggregate heatmaps from episode data
     for ep in episode_data:
         if "heatmaps" in ep:
             for agent_id, heatmap_list in ep["heatmaps"].items():
-                if agent_id in aggregated:
+                if agent_id in total_heatmaps:
                     heatmap_array = np.array(heatmap_list, dtype=np.int32)
-                    aggregated[agent_id] += heatmap_array
+                    total_heatmaps[agent_id] += heatmap_array
 
-    return aggregated
+    return total_heatmaps
 
 
 def create_resource_distribution_heatmap(episode_data: List[Dict], grid_size: int = 15) -> np.ndarray:
-    """
-    Create a heatmap showing where resources were initially placed across all episodes.
-
-    Args:
-        episode_data: List of episode data dictionaries
-        grid_size: Size of the grid
-
-    Returns:
-        2D array with resource spawn counts
-    """
     resource_heatmap = np.zeros((grid_size, grid_size), dtype=np.int32)
 
     for ep in episode_data:
@@ -169,23 +108,13 @@ def create_screenshot_montage(
     num_samples: int = 9,
     output_path: str = "results/screenshot_montage.png",
 ):
-    """
-    Create a montage of sample episode screenshots.
-
-    Args:
-        episode_data: List of episode data dictionaries
-        num_samples: Number of screenshots to include
-        output_path: Output file path
-    """
     if len(episode_data) == 0:
         print("No episode data to create montage")
         return
 
-    # Select sample episodes
     sample_indices = np.linspace(0, len(episode_data) - 1, num_samples, dtype=int)
     sample_episodes = [episode_data[i] for i in sample_indices]
 
-    # Create subplot grid
     grid_size = int(np.ceil(np.sqrt(num_samples)))
     fig, axes = plt.subplots(grid_size, grid_size, figsize=(15, 15))
     axes = axes.flatten()
@@ -209,7 +138,6 @@ def create_screenshot_montage(
             )
         axes[idx].axis("off")
 
-    # Hide unused subplots
     for idx in range(len(sample_episodes), len(axes)):
         axes[idx].axis("off")
 
@@ -224,13 +152,6 @@ def create_screenshot_montage(
 
 
 def generate_preliminary_results(logs_dir: str = "logs/episodes", results_dir: str = "results"):
-    """
-    Generate all preliminary results and save them.
-
-    Args:
-        logs_dir: Directory containing episode JSON files
-        results_dir: Directory to save results
-    """
     print("Loading episode data...")
     episode_data = load_episode_data(logs_dir)
 
@@ -240,15 +161,12 @@ def generate_preliminary_results(logs_dir: str = "logs/episodes", results_dir: s
 
     print(f"Processing {len(episode_data)} episodes...")
 
-    # Calculate survival rates
     print("Calculating survival rates...")
     survival_stats = calculate_survival_rate(episode_data)
 
-    # Calculate cooperation scores
     print("Calculating cooperation scores...")
     cooperation_stats = calculate_cooperation_scores(episode_data)
 
-    # Create resource distribution heatmap
     print("Creating resource distribution heatmap...")
     resource_heatmap = create_resource_distribution_heatmap(episode_data, grid_size=15)
     resource_heatmap_path = os.path.join(results_dir, "resource_distribution_heatmap.png")
@@ -260,16 +178,13 @@ def generate_preliminary_results(logs_dir: str = "logs/episodes", results_dir: s
         title="Resource Distribution Heatmap (All Episodes)",
     )
 
-    # Create screenshot montage
     print("Creating screenshot montage...")
     montage_path = os.path.join(results_dir, "screenshot_montage.png")
     create_screenshot_montage(episode_data, num_samples=9, output_path=montage_path)
 
-    # Aggregate and save movement heatmaps
     print("Aggregating movement heatmaps...")
     aggregated_heatmaps = aggregate_heatmaps(episode_data, grid_size=15)
 
-    # If logs_dir is ".../episodes", write aggregated heatmaps alongside it in ".../heatmaps".
     logs_base_dir = os.path.dirname(logs_dir.rstrip("/\\"))
     for agent_id, heatmap in aggregated_heatmaps.items():
         heatmap_path = os.path.join(logs_base_dir, "heatmaps", f"{agent_id}_heatmap.png")
@@ -280,7 +195,6 @@ def generate_preliminary_results(logs_dir: str = "logs/episodes", results_dir: s
         )
         print(f"  Saved aggregated heatmap for {agent_id}")
 
-    # Generate reward curves
     print("Generating reward curves...")
     reward_history = {
         "agent_0": [],
@@ -296,7 +210,6 @@ def generate_preliminary_results(logs_dir: str = "logs/episodes", results_dir: s
     save_reward_curve(reward_history, reward_curve_path)
     print(f"  Saved reward curve to {reward_curve_path}")
 
-    # Save summary statistics
     summary = {
         "total_episodes": len(episode_data),
         "survival_rates": survival_stats,
@@ -317,7 +230,6 @@ def generate_preliminary_results(logs_dir: str = "logs/episodes", results_dir: s
     with open(summary_path, "w") as f:
         json.dump(summary, f, indent=2)
 
-    # Print summary
     print("\n" + "=" * 60)
     print("PRELIMINARY RESULTS SUMMARY")
     print("=" * 60)
@@ -358,4 +270,3 @@ def generate_preliminary_results(logs_dir: str = "logs/episodes", results_dir: s
 
 if __name__ == "__main__":
     generate_preliminary_results()
-
