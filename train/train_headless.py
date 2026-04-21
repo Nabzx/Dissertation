@@ -21,7 +21,7 @@ from train.run_simulation import run_episode
 
 
 def train_headless(
-    num_episodes: int = 5000,
+    num_episodes: int = 50000,
     checkpoint_dir: str = "checkpoints",
     metrics_path: str = "results/headless_training_metrics.json",
     csv_path: str = "results/headless_training_metrics.csv",
@@ -237,7 +237,7 @@ def _append_csv_row(path: str, row: Dict) -> None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train PPO headlessly with checkpoints.")
-    parser.add_argument("--num-episodes", type=int, default=5000)
+    parser.add_argument("--num-episodes", type=int, default=50000)
     parser.add_argument("--checkpoint-dir", default="checkpoints")
     parser.add_argument("--metrics-path", default="results/headless_training_metrics.json")
     parser.add_argument("--csv-path", default="results/headless_training_metrics.csv")

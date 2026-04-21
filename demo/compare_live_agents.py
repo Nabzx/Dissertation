@@ -132,7 +132,7 @@ def create_policy_pool(
     if not os.path.exists(checkpoint):
         print("Pretrained checkpoint not found.")
         print("Run pretraining first:")
-        print("python3 train/train_simple_env.py --num-episodes 5000")
+        print("python3 train/train_headless.py --num-episodes 50000")
         print(f"Expected checkpoint path: {checkpoint}")
         sys.exit(1)
 
@@ -464,7 +464,7 @@ def write_logs(rows: List[Dict], output_dir: str) -> None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Live visual comparison of pretrained vs scratch agents.")
-    parser.add_argument("--checkpoint", default="checkpoints/run_10000/ppo_latest.pt")
+    parser.add_argument("--checkpoint", default="checkpoints/run_50000/ppo_latest.pt")
     parser.add_argument("--trained-checkpoint", default=None, help=argparse.SUPPRESS)
     parser.add_argument("--learning-mode", choices=("on", "off"), default="off")
     parser.add_argument("--num-episodes", type=int, default=10)

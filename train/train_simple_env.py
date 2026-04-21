@@ -14,9 +14,9 @@ from train.train_headless import train_headless
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train PPO in an easier curriculum environment.")
     parser.add_argument("--num-episodes", type=int, default=5000)
-    parser.add_argument("--checkpoint-dir", default="checkpoints/simple_env")
-    parser.add_argument("--metrics-path", default="results/simple_env_training_metrics.json")
-    parser.add_argument("--csv-path", default="results/simple_env_training_metrics.csv")
+    parser.add_argument("--checkpoint-dir", default=None)
+    parser.add_argument("--metrics-path", default=None)
+    parser.add_argument("--csv-path", default=None)
     parser.add_argument("--checkpoint-every", type=int, default=500)
     parser.add_argument("--smoothing-window", type=int, default=50)
     parser.add_argument("--reward-scheme", default="selfish")
@@ -32,12 +32,13 @@ def parse_args() -> argparse.Namespace:
 
 if __name__ == "__main__":
     args = parse_args()
-    run_name = f"run_{args.num_episodes}"
-    if args.checkpoint_dir == "checkpoints/simple_env":
+    num_episodes = args.num_episodes
+    run_name = f"run_{num_episodes}"
+    if args.checkpoint_dir is None:
         args.checkpoint_dir = f"checkpoints/{run_name}"
-    if args.metrics_path == "results/simple_env_training_metrics.json":
+    if args.metrics_path is None:
         args.metrics_path = f"results/{run_name}/simple_env_training_metrics.json"
-    if args.csv_path == "results/simple_env_training_metrics.csv":
+    if args.csv_path is None:
         args.csv_path = f"results/{run_name}/simple_env_training_metrics.csv"
 
     latest_checkpoint_path = f"{args.checkpoint_dir.rstrip('/')}/ppo_latest.pt"
