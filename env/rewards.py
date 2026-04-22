@@ -12,7 +12,7 @@ def compute_reward(agent_id: str, collected: Dict[str, float], team_total: float
     if scheme == "selfish":
         return own
     if scheme in ("cooperative", "fully_cooperative"):
-        return team_avg
+        return team_avg + 0.1 * own
     if scheme == "mixed":
         alpha = 0.5
         return alpha * own + (1 - alpha) * team_avg
