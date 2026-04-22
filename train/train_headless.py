@@ -65,6 +65,7 @@ def train_headless(
 
     os.makedirs(checkpoint_dir, exist_ok=True)
     os.makedirs(os.path.join("logs", run_name), exist_ok=True)
+    os.makedirs(os.path.join("results", run_name), exist_ok=True)
     for output_path in [metrics_path, csv_path]:
         output_dir = os.path.dirname(output_path)
         if output_dir:
@@ -84,6 +85,7 @@ def train_headless(
 
     ppo_agent = PPOAgent(obs_dim=obs_dim, n_actions=action_dim, device=device)
     metrics: List[Dict] = []
+    last_episodes: List[Dict] = []
     _make_csv(csv_path)
 
     pbar = tqdm(range(num_episodes), desc="Training", unit="ep")
@@ -106,6 +108,25 @@ def train_headless(
         resources = episode_data["resources_collected"]
         total_resources = int(sum(resources.values()))
         total_reward = float(episode_data["total_shaped_reward"])
+
+        if episode >= max(0, num_episodes - 100):
+            heatmap = None
+            for agent_heatmap in episode_data.get("heatmaps", {}).values():
+                arr = np.array(agent_heatmap, dtype=np.int32)
+                heatmap = arr if heatmap is None else heatmap + arr
+            if heatmap is None:
+                heatmap = np.zeros((grid_size, grid_size), dtype=np.int32)
+
+            last_episodes.append(
+                {
+                    "episode": episode + 1,
+                    "trajectories": episode_data["trajectories"],
+                    "heatmap": heatmap.tolist(),
+                    "total_reward": total_reward,
+                    "resources_collected": resources,
+                }
+            )
+
         ppo_metrics = episode_data.get("ppo_metrics") or {}
         reward_ma = _moving_avg_value(metrics, "total_reward", total_reward, smoothing_window)
         resources_ma = _moving_avg_value(metrics, "total_resources", total_resources, smoothing_window)
@@ -161,9 +182,12 @@ def train_headless(
     ppo_agent.save(final_path)
     ppo_agent.save(os.path.join(checkpoint_dir, "ppo_latest.pt"))
     _write_metrics(metrics_path, metrics)
+    final_episodes_path = os.path.join("results", run_name, "final_episodes.json")
+    _write_metrics(final_episodes_path, last_episodes)
     print(f"Saved final checkpoint: {final_path}")
     print(f"Saved metrics: {metrics_path}")
     print(f"Saved per-episode CSV: {csv_path}")
+    print(f"Saved final episodes: {final_episodes_path}")
 
     from analysis.post_training_analysis import run_post_training_analysis
 
