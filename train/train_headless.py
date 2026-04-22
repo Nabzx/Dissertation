@@ -167,7 +167,7 @@ def train_headless(
 
     from analysis.post_training_analysis import run_post_training_analysis
 
-    run_post_training_analysis(env, ppo_agent, run_name)
+    run_post_training_analysis(run_name)
     return metrics
 
 
