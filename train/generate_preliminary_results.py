@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 import os
 import sys
@@ -7,6 +9,7 @@ from typing import Dict, List
 import numpy as np
 import matplotlib.pyplot as plt
 
+# --- make sure project root is importable when running script ---
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
@@ -17,12 +20,15 @@ from env.utils import save_heatmap, save_movement_heatmap, save_reward_curve
 def load_episode_data(logs_dir: str = "logs/run_5000/episodes") -> List[Dict]:
     episode_data = []
 
+    # --- check logs folder exists ---
     if not os.path.exists(logs_dir):
         print(f"Warning: {logs_dir} does not exist. No episodes to process.")
         return episode_data
 
+    # --- get all episode json files ---
     episode_files = sorted(Path(logs_dir).glob("episode_*.json"))
 
+    # --- load each episode file ---
     for episode_file in episode_files:
         with open(episode_file, "r") as f:
             data = json.load(f)
@@ -32,6 +38,7 @@ def load_episode_data(logs_dir: str = "logs/run_5000/episodes") -> List[Dict]:
 
 
 def calculate_survival_rate(episode_data: List[Dict]) -> Dict[str, float]:
+    # --- handle empty input ---
     if len(episode_data) == 0:
         return {
             "agent_0_survival_rate": 0.0,
@@ -40,11 +47,13 @@ def calculate_survival_rate(episode_data: List[Dict]) -> Dict[str, float]:
             "total_episodes": 0,
         }
 
+    # --- count survival events ---
     agent_0_survived = sum(1 for ep in episode_data if ep["agent_0_survived"])
     agent_1_survived = sum(1 for ep in episode_data if ep["agent_1_survived"])
     both_survived = sum(1 for ep in episode_data if ep["both_survived"])
     total_episodes = len(episode_data)
 
+    # --- convert to rates ---
     return {
         "agent_0_survival_rate": agent_0_survived / total_episodes,
         "agent_1_survival_rate": agent_1_survived / total_episodes,
@@ -57,6 +66,7 @@ def calculate_survival_rate(episode_data: List[Dict]) -> Dict[str, float]:
 
 
 def calculate_cooperation_scores(episode_data: List[Dict]) -> Dict[str, float]:
+    # --- handle empty case ---
     if len(episode_data) == 0:
         return {
             "average_cooperation": 0.0,
@@ -65,11 +75,13 @@ def calculate_cooperation_scores(episode_data: List[Dict]) -> Dict[str, float]:
 
     episode_cooperations = []
 
+    # --- compute cooperation per episode ---
     for ep in episode_data:
         agent_0_resources = ep["resources_collected"]["agent_0"]
         agent_1_resources = ep["resources_collected"]["agent_1"]
         total_spawned = ep["total_resources_spawned"]
 
+        # simple fairness-based cooperation metric
         cooperation = min(agent_0_resources, agent_1_resources) / max(1, total_spawned)
         episode_cooperations.append(cooperation)
 
@@ -83,11 +95,13 @@ def calculate_cooperation_scores(episode_data: List[Dict]) -> Dict[str, float]:
 
 
 def aggregate_heatmaps(episode_data: List[Dict], grid_size: int = 15) -> Dict[str, np.ndarray]:
+    # --- initialise empty heatmaps ---
     total_heatmaps = {
         "agent_0": np.zeros((grid_size, grid_size), dtype=np.int32),
         "agent_1": np.zeros((grid_size, grid_size), dtype=np.int32),
     }
 
+    # --- sum up all episode heatmaps ---
     for ep in episode_data:
         if "heatmaps" in ep:
             for agent_id, heatmap_list in ep["heatmaps"].items():
@@ -99,6 +113,7 @@ def aggregate_heatmaps(episode_data: List[Dict], grid_size: int = 15) -> Dict[st
 
 
 def create_resource_distribution_heatmap(episode_data: List[Dict], grid_size: int = 15) -> np.ndarray:
+    # --- track where resources spawn across all episodes ---
     resource_heatmap = np.zeros((grid_size, grid_size), dtype=np.int32)
 
     for ep in episode_data:
@@ -117,6 +132,7 @@ def create_screenshot_montage(
         print("No episode data to create montage")
         return
 
+    # --- sample evenly spaced episodes ---
     sample_indices = np.linspace(0, len(episode_data) - 1, num_samples, dtype=int)
     sample_episodes = [episode_data[i] for i in sample_indices]
 
@@ -124,6 +140,7 @@ def create_screenshot_montage(
     fig, axes = plt.subplots(grid_size, grid_size, figsize=(15, 15))
     axes = axes.flatten()
 
+    # --- plot each sampled screenshot ---
     for idx, ep in enumerate(sample_episodes):
         if idx >= len(axes):
             break
@@ -143,6 +160,7 @@ def create_screenshot_montage(
             )
         axes[idx].axis("off")
 
+    # --- hide unused subplots ---
     for idx in range(len(sample_episodes), len(axes)):
         axes[idx].axis("off")
 
@@ -166,12 +184,14 @@ def generate_preliminary_results(logs_dir: str = "logs/run_5000/episodes", resul
 
     print(f"Processing {len(episode_data)} episodes...")
 
+    # --- compute key metrics ---
     print("Calculating survival rates...")
     survival_stats = calculate_survival_rate(episode_data)
 
     print("Calculating cooperation scores...")
     cooperation_stats = calculate_cooperation_scores(episode_data)
 
+    # --- resource distribution heatmap ---
     print("Creating resource distribution heatmap...")
     resource_heatmap = create_resource_distribution_heatmap(episode_data, grid_size=15)
     resource_heatmap_path = os.path.join(results_dir, "resource_distribution_heatmap.png")
@@ -183,10 +203,12 @@ def generate_preliminary_results(logs_dir: str = "logs/run_5000/episodes", resul
         title="Resource Distribution Heatmap (All Episodes)",
     )
 
+    # --- screenshot montage ---
     print("Creating screenshot montage...")
     montage_path = os.path.join(results_dir, "screenshot_montage.png")
     create_screenshot_montage(episode_data, num_samples=9, output_path=montage_path)
 
+    # --- movement heatmaps ---
     print("Aggregating movement heatmaps...")
     aggregated_heatmaps = aggregate_heatmaps(episode_data, grid_size=15)
 
@@ -200,6 +222,7 @@ def generate_preliminary_results(logs_dir: str = "logs/run_5000/episodes", resul
         )
         print(f"  Saved aggregated heatmap for {agent_id}")
 
+    # --- reward curves ---
     print("Generating reward curves...")
     reward_history = {
         "agent_0": [],
@@ -215,6 +238,7 @@ def generate_preliminary_results(logs_dir: str = "logs/run_5000/episodes", resul
     save_reward_curve(reward_history, reward_curve_path)
     print(f"  Saved reward curve to {reward_curve_path}")
 
+    # --- build summary json ---
     summary = {
         "total_episodes": len(episode_data),
         "survival_rates": survival_stats,
@@ -235,10 +259,12 @@ def generate_preliminary_results(logs_dir: str = "logs/run_5000/episodes", resul
     with open(summary_path, "w") as f:
         json.dump(summary, f, indent=2)
 
+    # --- print results nicely ---
     print("\n" + "=" * 60)
     print("PRELIMINARY RESULTS SUMMARY")
     print("=" * 60)
     print(f"Total Episodes: {summary['total_episodes']}")
+
     print("\nSurvival Rates:")
     print(
         f"  Agent 0: {survival_stats['agent_0_survival_rate']:.2%} "
@@ -252,14 +278,17 @@ def generate_preliminary_results(logs_dir: str = "logs/run_5000/episodes", resul
         f"  Both: {survival_stats['both_survival_rate']:.2%} "
         f"({survival_stats['both_survived_count']}/{survival_stats['total_episodes']})"
     )
+
     print("\nCooperation Score:")
     print(f"  Average: {cooperation_stats['average_cooperation']:.4f}")
     print(f"  Std Dev: {cooperation_stats['std_cooperation']:.4f}")
     print(f"  Range: [{cooperation_stats['min_cooperation']:.4f}, {cooperation_stats['max_cooperation']:.4f}]")
+
     print("\nResource Statistics:")
     print(f"  Avg Resources/Episode: {summary['resource_statistics']['average_resources_per_episode']:.2f}")
     print(f"  Avg Agent 0 Collected: {summary['resource_statistics']['average_agent_0_collected']:.2f}")
     print(f"  Avg Agent 1 Collected: {summary['resource_statistics']['average_agent_1_collected']:.2f}")
+
     print("=" * 60)
 
     print(f"\nResults saved to {results_dir}/")
@@ -274,4 +303,5 @@ def generate_preliminary_results(logs_dir: str = "logs/run_5000/episodes", resul
 
 
 if __name__ == "__main__":
+    # --- run full analysis pipeline ---
     generate_preliminary_results()

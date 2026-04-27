@@ -1,10 +1,16 @@
 # Project Log
 
+## Notes:
+
+- I believe I have over 110+ commits (mostly concise and informative, some including the industry standard e.g. "refactor: xyz").
+- I had regular meetings (once a fortnight) with my supervisor where I showcased my progress, asked for advice and we talked about next steps. I believe I was also very proactive in scheduling meetings. 
+
+
 ## Week 1 [w/c October]
 
 - I watched a few videos on MDPs and neural networks from 3Blue1Brown etc. I think its a good idea to understand RL and the theory behind artificial intelligence before starting anything
-- At this point I’m not coding much yet as im just trying to properly understand the theory before jumping into anything.
-- My research question is basically confirmed 
+- Just trying to properly understand the theory before jumping into anything.
+- My research question is basically confirmed.
 
 ## Week 2 [w/c November]
 - Completed Interim Report
@@ -95,8 +101,12 @@
 - Developed a much nicer live visualisation system with UI and graphs (live and working). I also tried to implement a playback and speed slider system but it was too complex and it was also unnecessary for this project.
 - Added a comparison setup between pretrained and base agents.
 
-## Week 15/16 [w/c 25 April]
+## FINAL Week 15/16 [w/c 25 April]
 - Very close to submission date but my project is essentially done. All that is left is to clean the code and add comments. I have finished my dissertation but just cleaning up the results section and adding citations correctly.
+
+
+
+
 
 
 

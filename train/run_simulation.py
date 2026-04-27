@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 import json
 import os
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -34,6 +36,7 @@ def run_episode(
     render: bool = False,
     train_policy: bool = True,
 ) -> Dict:
+    # --- reset env and get initial observations ---
     raw_obs, infos = env.reset(seed=episode_num)
 
     agent_type = agent_type.lower()
@@ -41,14 +44,19 @@ def run_episode(
     logs_dir = logs_dir or "logs"
     results_dir = results_dir or "results"
 
+    # --- tracking vars for rewards and resources ---
     total_spawned = env.num_resources
     cumulative_collected: Dict[str, int] = {a: 0 for a in env.agents}
     total_shaped_reward = 0.0
+
+    # check if special game mode is active
     game_mode_active = getattr(env, "game_mode", None) is not None
 
+    # --- sanity check for PPO ---
     if agent_type == "ppo" and ppo_agent is None:
         raise ValueError("agent_type='ppo' requires a ppo_agent instance.")
 
+    # --- set up communication layer if needed ---
     comm_layer: Optional[CommunicationLayer] = None
     if agent_type == "ppo" and use_communication:
         comm_layer = CommunicationLayer(env)
@@ -57,12 +65,14 @@ def run_episode(
     else:
         obs = raw_obs
 
+    # --- reset agents / buffers ---
     if agent_type == "heuristic":
         for agent in agents.values():
             agent.reset()
     elif train_policy:
         ppo_agent.reset_buffer()
 
+    # --- tracking trajectories and rendering ---
     trajectory = []
     agent_trajectories = {agent: [] for agent in env.agents}
     grid_sequence: List[np.ndarray] = []
@@ -71,16 +81,19 @@ def run_episode(
     if render:
         grid_sequence.append(env.grid.copy())
 
+    # store initial positions
     for agent_id in env.agents:
         pos = env.agent_positions[agent_id]
         agent_trajectories[agent_id].append(pos)
 
+    # ================= MAIN LOOP =================
     while True:
         actions = {}
         step_log_probs: Dict[str, float] = {}
         step_values: Dict[str, float] = {}
         step_flat_obs: Dict[str, np.ndarray] = {}
 
+        # --- select actions ---
         if agent_type == "heuristic":
             for agent_id, agent in agents.items():
                 actions[agent_id] = agent.get_action(obs[agent_id])
@@ -88,14 +101,18 @@ def run_episode(
             for agent_id in env.agents:
                 agent_obs = obs[agent_id]
                 flat_obs = agent_obs if agent_obs.ndim == 1 else agent_obs.flatten()
+
                 action, log_prob, value = ppo_agent.select_action(flat_obs)
+
                 actions[agent_id] = int(action)
                 step_log_probs[agent_id] = float(log_prob)
                 step_values[agent_id] = float(value)
                 step_flat_obs[agent_id] = flat_obs
 
+        # --- step environment ---
         raw_next_obs, rewards, terminations, truncations, infos = env.step(actions)
 
+        # --- compute shaped rewards ---
         if game_mode_active:
             shaped_rewards = rewards.copy()
         else:
@@ -110,8 +127,10 @@ def run_episode(
                 total_spawned=total_spawned,
                 alpha=0.5,
             )
+
         total_shaped_reward += sum(shaped_rewards.values())
 
+        # --- store transitions for PPO ---
         if agent_type == "ppo" and train_policy:
             for agent_id in env.agents:
                 done = bool(terminations[agent_id] or truncations[agent_id])
@@ -125,19 +144,23 @@ def run_episode(
                     trajectory_id=agent_id,
                 )
 
+        # --- update communication if enabled ---
         if comm_layer is not None:
             comm_layer.update_messages_after_step()
             obs = comm_layer.build_augment_observation(raw_next_obs)
         else:
             obs = raw_next_obs
 
+        # --- store grid for rendering ---
         if render:
             grid_sequence.append(env.grid.copy())
 
+        # --- track positions ---
         for agent_id in env.agents:
             pos = env.agent_positions[agent_id]
             agent_trajectories[agent_id].append(pos)
 
+        # --- log step data ---
         trajectory.append(
             {
                 "step": step_count,
@@ -149,9 +172,11 @@ def run_episode(
 
         step_count += 1
 
+        # --- stop if episode finished ---
         if all(terminations.values()) or all(truncations.values()):
             break
 
+    # --- update PPO after episode ---
     ppo_metrics = None
     if agent_type == "ppo" and train_policy:
         try:
@@ -159,16 +184,19 @@ def run_episode(
         except RuntimeError as exc:
             print(f"[ppo] Update skipped: {exc}")
 
+    # --- collect final data from env ---
     heatmaps = env.get_heatmaps()
     resources_collected = env.get_resources_collected()
     final_grid = env.get_final_grid()
     initial_resources = env.get_initial_resource_positions()
 
+    # --- save screenshot ---
     screenshot_path = None
     if save_artifacts and save_screenshots:
         screenshot_path = os.path.join(logs_dir, "screenshots", f"episode_{episode_num:04d}_final.png")
         save_grid_screenshot(final_grid, screenshot_path, title=f"Episode {episode_num} - Final State")
 
+    # --- save heatmaps ---
     heatmap_paths = {}
     if save_artifacts and save_heatmaps:
         for agent_id, heatmap in heatmaps.items():
@@ -176,15 +204,18 @@ def run_episode(
             save_heatmap(heatmap, heatmap_path, agent_id, title=f"Episode {episode_num} - {agent_id}")
             heatmap_paths[agent_id] = heatmap_path
 
+    # --- save resource distribution ---
     resource_dist_path = None
     if save_artifacts:
         resource_dist_path = os.path.join(logs_dir, "resources", f"episode_{episode_num:04d}_distribution.png")
         plot_resource_distribution(initial_resources, resource_dist_path, grid_size=env.grid_size)
 
+    # --- save trajectories for first episodes ---
     if save_artifacts and episode_num in [0, 1]:
         trajectory_path = os.path.join(results_dir, "trajectories", f"episode_{episode_num}_trajectory.png")
         save_trajectory_plot(agent_trajectories, env.grid_size, trajectory_path)
 
+    # --- build episode summary dict ---
     episode_data = {
         "episode_num": episode_num,
         "reward_scheme": reward_scheme,
@@ -196,12 +227,16 @@ def run_episode(
         "resources_collected": resources_collected.copy(),
         "total_resources_spawned": len(initial_resources),
         "initial_resource_positions": initial_resources,
+
+        # --- survival metrics ---
         "agent_survival": {
             agent: resources_collected.get(agent, 0) >= 1
             for agent in env.agents
         },
         "all_survived": all(resources_collected.get(agent, 0) >= 1 for agent in env.agents),
         "any_survived": any(resources_collected.get(agent, 0) >= 1 for agent in env.agents),
+
+        # quick access (for 2-agent setups)
         "agent_0_survived": resources_collected.get("agent_0", 0) >= 1,
         "agent_1_survived": resources_collected.get("agent_1", 0) >= 1,
         "both_survived": all(
@@ -209,6 +244,7 @@ def run_episode(
             for agent in ["agent_0", "agent_1"]
             if agent in resources_collected
         ),
+
         "screenshot_path": screenshot_path,
         "heatmap_paths": heatmap_paths,
         "resource_dist_path": resource_dist_path,
@@ -217,12 +253,14 @@ def run_episode(
         "ppo_metrics": ppo_metrics,
     }
 
+    # --- save episode json ---
     if save_artifacts:
         episode_json_path = os.path.join(logs_dir, "episodes", f"episode_{episode_num:04d}.json")
         os.makedirs(os.path.dirname(episode_json_path), exist_ok=True)
         with open(episode_json_path, "w") as f:
             json.dump(episode_data, f, indent=2)
 
+    # --- attach rendering frames if needed ---
     if render:
         episode_data["grid_sequence"] = grid_sequence
 
@@ -243,6 +281,8 @@ def run_batch_simulation(
     use_communication: bool = False,
     game_mode: str = "default",
 ) -> List[Dict]:
+
+    # --- create environment ---
     env = GridWorldEnv(
         grid_size=grid_size,
         num_agents=num_agents,
@@ -253,15 +293,19 @@ def run_batch_simulation(
 
     game_mode = game_mode.lower()
     if game_mode not in ("default", "none"):
-        raise ValueError(f"Unknown game_mode '{game_mode}'. Expected 'default' or 'none'.")
+        raise ValueError(f"Unknown game_mode '{game_mode}'.")
 
     agent_type = agent_type.lower()
     reward_scheme = reward_scheme.lower()
+
+    # --- create folder names for this run ---
     mode_tag = "" if game_mode in ("default", "none") else f"_{game_mode}"
     run_tag = f"{agent_type}_{reward_scheme}{mode_tag}" + ("_comm" if use_communication else "")
 
     logs_dir = f"logs/{run_tag}"
     results_dir = f"results/{run_tag}"
+
+    # --- create directories ---
     os.makedirs(os.path.join(logs_dir, "episodes"), exist_ok=True)
     os.makedirs(os.path.join(logs_dir, "screenshots"), exist_ok=True)
     os.makedirs(os.path.join(logs_dir, "heatmaps"), exist_ok=True)
@@ -269,27 +313,36 @@ def run_batch_simulation(
     os.makedirs(os.path.join(results_dir, "trajectories"), exist_ok=True)
     os.makedirs(os.path.join(results_dir, "reward_curves"), exist_ok=True)
 
+    # --- initialise agents ---
     ppo_agent: Optional[PPOAgent] = None
+
     if agent_type == "heuristic":
         agents: Optional[Dict[str, HeuristicAgent]] = {
             agent: HeuristicAgent(agent) for agent in env.agents
         }
+
     elif agent_type == "ppo":
         agents = None
         obs_size = env.observation_spaces[env.agents[0]].shape
         obs_dim = int(np.prod(obs_size))
+
         if use_communication:
             obs_dim += int(CommunicationLayer(env).config.max_ints)
+
         action_dim = 5
         ppo_agent = PPOAgent(obs_dim=obs_dim, n_actions=action_dim)
+
     else:
-        raise ValueError(f"Unknown agent_type '{agent_type}'. Expected 'heuristic' or 'ppo'.")
+        raise ValueError(f"Unknown agent_type '{agent_type}'.")
 
     all_episode_data = []
 
     print(f"Running {num_episodes} episodes...")
+
+    # --- main loop over episodes ---
     for episode_num in range(num_episodes):
         print(f"Episode {episode_num + 1}/{num_episodes}...", end=" ")
+
         episode_data = run_episode(
             env,
             agents,
@@ -303,8 +356,10 @@ def run_batch_simulation(
             reward_scheme=reward_scheme,
             use_communication=use_communication,
         )
+
         all_episode_data.append(episode_data)
 
+        # --- print quick summary ---
         resources = episode_data["resources_collected"]
         resource_text = ", ".join(f"{agent}: {count}" for agent, count in resources.items())
         print(f"{resource_text}, Steps: {episode_data['total_steps']}")
@@ -316,6 +371,7 @@ def run_batch_simulation(
 
 
 if __name__ == "__main__":
+    # --- example run ---
     episode_data = run_batch_simulation(
         num_episodes=20,
         grid_size=15,

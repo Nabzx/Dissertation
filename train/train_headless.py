@@ -8,12 +8,14 @@ import sys
 from pathlib import Path
 from typing import Dict, List
 
+# --- ensure project root is on path (so imports work when running script directly) ---
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 import numpy as np
 
+# --- optional progress bar (falls back if tqdm not installed) ---
 try:
     from tqdm import tqdm
 except ImportError:
@@ -30,6 +32,7 @@ except ImportError:
     def tqdm(iterable, **kwargs):
         return _TqdmFallback(iterable, **kwargs)
 
+# --- project imports ---
 from env.gridworld_env import GridWorldEnv
 from agents.communication import CommunicationLayer
 from agents.ppo_agent import PPOAgent, TORCH_AVAILABLE
@@ -52,10 +55,14 @@ def train_headless(
     max_steps: int = 250,
     device: str = "cpu",
 ) -> List[Dict]:
+    # --- PPO requires PyTorch ---
     if not TORCH_AVAILABLE:
         raise RuntimeError("Headless PPO training requires PyTorch.")
 
+    # --- create run-specific directory names ---
     run_name = f"run_{num_episodes}_{reward_scheme}"
+
+    # adjust default paths to include run_name
     if checkpoint_dir == "checkpoints":
         checkpoint_dir = os.path.join("checkpoints", run_name)
     if metrics_path == "results/headless_training_metrics.json":
@@ -63,14 +70,17 @@ def train_headless(
     if csv_path == "results/headless_training_metrics.csv":
         csv_path = os.path.join("results", run_name, "headless_training_metrics.csv")
 
+    # --- create directories ---
     os.makedirs(checkpoint_dir, exist_ok=True)
     os.makedirs(os.path.join("logs", run_name), exist_ok=True)
     os.makedirs(os.path.join("results", run_name), exist_ok=True)
+
     for output_path in [metrics_path, csv_path]:
         output_dir = os.path.dirname(output_path)
         if output_dir:
             os.makedirs(output_dir, exist_ok=True)
 
+    # --- create environment ---
     env = GridWorldEnv(
         grid_size=grid_size,
         num_agents=num_agents,
@@ -78,18 +88,27 @@ def train_headless(
         num_obstacles=num_obstacles,
         max_steps=max_steps,
     )
+
+    # --- determine observation and action sizes ---
     obs_dim = int(np.prod(env.observation_spaces[env.agents[0]].shape))
     if use_communication:
         obs_dim += int(CommunicationLayer(env).config.max_ints)
     action_dim = int(env.action_spaces[env.agents[0]].n)
 
+    # --- initialise PPO agent ---
     ppo_agent = PPOAgent(obs_dim=obs_dim, n_actions=action_dim, device=device)
+
     metrics: List[Dict] = []
-    last_episodes: List[Dict] = []
+    last_episodes: List[Dict] = []  # store final 100 episodes for analysis
+
+    # --- create CSV file with headers ---
     _make_csv(csv_path)
 
+    # --- main training loop ---
     pbar = tqdm(range(num_episodes), desc="Training", unit="ep")
+
     for episode in pbar:
+        # run a single episode
         episode_data = run_episode(
             env=env,
             agents=None,
@@ -105,15 +124,18 @@ def train_headless(
             train_policy=True,
         )
 
+        # --- extract key metrics ---
         resources = episode_data["resources_collected"]
         total_resources = int(sum(resources.values()))
         total_reward = float(episode_data["total_shaped_reward"])
 
+        # --- store final 100 episodes for post-training analysis ---
         if episode >= max(0, num_episodes - 100):
             heatmap = None
             for agent_heatmap in episode_data.get("heatmaps", {}).values():
                 arr = np.array(agent_heatmap, dtype=np.int32)
                 heatmap = arr if heatmap is None else heatmap + arr
+
             if heatmap is None:
                 heatmap = np.zeros((grid_size, grid_size), dtype=np.int32)
 
@@ -127,23 +149,17 @@ def train_headless(
                 }
             )
 
+        # --- PPO metrics ---
         ppo_metrics = episode_data.get("ppo_metrics") or {}
+
+        # --- moving averages (smooth noisy RL signals) ---
         reward_ma = _moving_avg_value(metrics, "total_reward", total_reward, smoothing_window)
         resources_ma = _moving_avg_value(metrics, "total_resources", total_resources, smoothing_window)
         entropy_ma = _moving_avg_metric(metrics, "entropy", ppo_metrics.get("entropy", 0.0), smoothing_window)
-        policy_loss_ma = _moving_avg_metric(
-            metrics,
-            "policy_loss",
-            ppo_metrics.get("policy_loss", 0.0),
-            smoothing_window,
-        )
-        value_loss_ma = _moving_avg_metric(
-            metrics,
-            "value_loss",
-            ppo_metrics.get("value_loss", 0.0),
-            smoothing_window,
-        )
+        policy_loss_ma = _moving_avg_metric(metrics, "policy_loss", ppo_metrics.get("policy_loss", 0.0), smoothing_window)
+        value_loss_ma = _moving_avg_metric(metrics, "value_loss", ppo_metrics.get("value_loss", 0.0), smoothing_window)
 
+        # --- store row ---
         row = {
             "episode": episode + 1,
             "total_reward": total_reward,
@@ -157,74 +173,80 @@ def train_headless(
             "value_loss_ma": value_loss_ma,
             "ppo_metrics": ppo_metrics,
         }
+
         metrics.append(row)
         _append_csv_row(csv_path, row)
 
+        # --- update progress bar with recent averages ---
         recent = metrics[-10:]
         avg_reward = float(np.mean([item["total_reward"] for item in recent]))
         avg_resources = float(np.mean([item["total_resources"] for item in recent]))
+
         pbar.set_postfix({
             "reward": f"{avg_reward:.2f}",
             "res": f"{avg_resources:.2f}",
         })
 
+        # --- save checkpoints periodically ---
         should_checkpoint = checkpoint_every > 0 and (
             (episode + 1) % checkpoint_every == 0 or (episode + 1) == num_episodes
         )
+
         if should_checkpoint:
             checkpoint_path = os.path.join(checkpoint_dir, f"ppo_episode_{episode + 1:06d}.pt")
             ppo_agent.save(checkpoint_path)
             ppo_agent.save(os.path.join(checkpoint_dir, "ppo_latest.pt"))
+
             _write_metrics(metrics_path, metrics)
             print(f"Saved checkpoint: {checkpoint_path}")
 
+    # --- final save ---
     final_path = os.path.join(checkpoint_dir, "ppo_final.pt")
     ppo_agent.save(final_path)
     ppo_agent.save(os.path.join(checkpoint_dir, "ppo_latest.pt"))
+
     _write_metrics(metrics_path, metrics)
+
+    # save final episodes for analysis
     final_episodes_path = os.path.join("results", run_name, "final_episodes.json")
     _write_metrics(final_episodes_path, last_episodes)
+
     print(f"Saved final checkpoint: {final_path}")
     print(f"Saved metrics: {metrics_path}")
     print(f"Saved per-episode CSV: {csv_path}")
     print(f"Saved final episodes: {final_episodes_path}")
 
+    # --- run post-training analysis automatically ---
     from analysis.post_training_analysis import run_post_training_analysis
-
     run_post_training_analysis(run_name)
+
     return metrics
 
 
+# --- helper: save JSON metrics ---
 def _write_metrics(path: str, metrics: List[Dict]) -> None:
     with open(path, "w") as f:
         json.dump(metrics, f, indent=2)
 
 
-def _moving_avg_value(
-    previous_rows: List[Dict],
-    key: str,
-    current_value: float,
-    window: int,
-) -> float:
-    values = [float(row[key]) for row in previous_rows[-max(0, window - 1) :]]
+# --- moving average for simple values ---
+def _moving_avg_value(previous_rows: List[Dict], key: str, current_value: float, window: int) -> float:
+    values = [float(row[key]) for row in previous_rows[-max(0, window - 1):]]
     values.append(float(current_value))
     return float(np.mean(values)) if values else 0.0
 
 
-def _moving_avg_metric(
-    previous_rows: List[Dict],
-    metric_key: str,
-    current_value: float,
-    window: int,
-) -> float:
+# --- moving average for PPO metrics ---
+def _moving_avg_metric(previous_rows: List[Dict], metric_key: str, current_value: float, window: int) -> float:
     values = [
         float(row.get("ppo_metrics", {}).get(metric_key, 0.0))
-        for row in previous_rows[-max(0, window - 1) :]
+        for row in previous_rows[-max(0, window - 1):]
     ]
     values.append(float(current_value))
     return float(np.mean(values)) if values else 0.0
 
 
+# --- CSV helpers ---
 def _csv_fields() -> List[str]:
     return [
         "episode",
@@ -255,6 +277,7 @@ def _make_csv(path: str) -> None:
 def _append_csv_row(path: str, row: Dict) -> None:
     ppo_metrics = row.get("ppo_metrics") or {}
     resources = row.get("resources_collected") or {}
+
     flat_row = {
         "episode": row["episode"],
         "total_reward": row["total_reward"],
@@ -273,11 +296,13 @@ def _append_csv_row(path: str, row: Dict) -> None:
         "approx_kl": ppo_metrics.get("approx_kl", 0.0),
         "clip_fraction": ppo_metrics.get("clip_fraction", 0.0),
     }
+
     with open(path, "a", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=_csv_fields())
         writer.writerow(flat_row)
 
 
+# --- CLI args ---
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train PPO headlessly with checkpoints.")
     parser.add_argument("--num-episodes", type=int, default=50000)
@@ -297,6 +322,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+# --- entry point ---
 if __name__ == "__main__":
     args = parse_args()
     train_headless(
