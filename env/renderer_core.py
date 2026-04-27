@@ -14,7 +14,7 @@ from agents.communication import CommunicationLayer
 from agents.ppo_agent import PPOAgent
 from env.rewards import apply_reward_scheme
 
-from demos import renderer_draw, renderer_ui
+from env import renderer_draw, renderer_ui
 
 FRAME_TIME = 1.0 / 60.0
 
@@ -602,7 +602,7 @@ for _name in (
     "_update_agent_contribution_bars",
     "_update_cooperation_lines",
     "_moving_avg",
-    "setup_live_speed_controls",
+    "setup_live_layout",
 ):
     setattr(LiveEpisodeRenderer, _name, getattr(renderer_ui, _name))
 
@@ -622,7 +622,7 @@ def run_live_training(
     final_demo_episodes: int = 10,
     show_perception: bool = True,
     show_communication: bool = True,
-    mode: str = "live",
+    mode: str = "train",
 ) -> List[Dict]:
     mode = mode.lower().strip()
 

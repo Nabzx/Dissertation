@@ -39,12 +39,16 @@ class GridWorldEnv(ParallelEnv):
         self.view_size = view_size
         self.partial_observability = partial_observability
         self.seed = seed
-        self.arena_mask = compute_octagon_mask(grid_size, grid_size)
-        self.communication_probability = 0.02
+
+        self.arena_mask = compute_octagon_mask(grid_size, grid_size)  
+        # boolean mask for valid arena cells (octagon shape)
+
+        self.communication_probability = 0.02  # chance an agent "communicates" per step
 
         self.resource_value = 1
         self.agent_value_start = 2
-        self.obstacle_value = self.agent_value_start + self.n_agents
+        self.obstacle_value = self.agent_value_start + self.n_agents  
+        # numeric encoding in grid
 
         self.agents = [f"agent_{idx}" for idx in range(self.n_agents)]
         self.possible_agents = self.agents.copy()
@@ -60,17 +64,20 @@ class GridWorldEnv(ParallelEnv):
         self.heatmaps = {
             agent: np.zeros((grid_size, grid_size), dtype=np.int32)
             for agent in self.agents
-        }
+        }  # track visits per agent
+
         self.resources_collected = {agent: 0 for agent in self.agents}
         self.initial_resource_positions = []
 
-        self.action_spaces = {agent: Discrete(5) for agent in self.agents}
+        self.action_spaces = {agent: Discrete(5) for agent in self.agents}  
+        # 5 actions: stay, up, down, left, right
 
         obs_size = (view_size, view_size) if partial_observability else (grid_size, grid_size)
+
         self.observation_spaces = {
             agent: Box(low=0, high=self.obstacle_value, shape=obs_size, dtype=np.int32)
             for agent in self.agents
-        }
+        }  # grid observation (partial or full)
 
         if seed is not None:
             np.random.seed(seed)
@@ -85,12 +92,14 @@ class GridWorldEnv(ParallelEnv):
         self.grid = np.zeros((self.grid_size, self.grid_size), dtype=np.int32)
         self.step_count = 0
 
+        # reset tracking structures
         self.heatmaps = {
             agent: np.zeros((self.grid_size, self.grid_size), dtype=np.int32)
             for agent in self.agents
         }
         self.resources_collected = {agent: 0 for agent in self.agents}
 
+        # place obstacles randomly inside arena
         self.obstacle_positions = []
         obstacle_count = 0
         while obstacle_count < self.num_obstacles:
@@ -99,6 +108,7 @@ class GridWorldEnv(ParallelEnv):
             self.obstacle_positions.append(pos)
             obstacle_count += 1
 
+        # place agents
         self.agent_positions = {}
         self.just_communicated = {agent: False for agent in self.agents}
         for agent in self.agents:
@@ -106,6 +116,7 @@ class GridWorldEnv(ParallelEnv):
             self.agent_positions[agent] = pos
             self.grid[pos[0], pos[1]] = self.agent_value(agent)
 
+        # place resources
         self.resource_positions = []
         self.initial_resource_positions = []
         self.newly_spawned_resources = []
@@ -118,6 +129,7 @@ class GridWorldEnv(ParallelEnv):
             self.initial_resource_positions.append(pos)
             resource_count += 1
 
+        # initialise heatmaps
         for agent in self.agents:
             pos = self.agent_positions[agent]
             self.heatmaps[agent][pos[0], pos[1]] += 1
@@ -125,8 +137,10 @@ class GridWorldEnv(ParallelEnv):
         return self._get_obs(), {agent: {} for agent in self.agents}
 
     def step(self, actions: Dict[str, int]):
-        self.reset_communication_flags()
+        self.reset_communication_flags()  
+        # clear comm flags each step
 
+        # clear previous agent positions from grid
         for agent in self.agents:
             pos = self.agent_positions[agent]
             if self.is_agent_value(self.grid[pos[0], pos[1]]):
@@ -137,49 +151,59 @@ class GridWorldEnv(ParallelEnv):
 
         rewards = {}
         occupied_positions = set(self.agent_positions.values())
+
         for agent in self.agents:
             action = actions[agent]
             pos = self.agent_positions[agent]
+
             occupied_positions.discard(pos)
+
             new_pos = self._move_agent(pos, action)
+
             if new_pos in occupied_positions:
-                new_pos = pos
+                new_pos = pos  # avoid collisions
+
             self.agent_positions[agent] = new_pos
             occupied_positions.add(new_pos)
 
+            # check resource collection
             if new_pos in self.resource_positions:
                 rewards[agent] = 1.0
                 self.resources_collected[agent] += 1
                 self.resource_positions.remove(new_pos)
+
                 if self.grid[new_pos[0], new_pos[1]] == self.resource_value:
                     self.grid[new_pos[0], new_pos[1]] = 0
             else:
                 rewards[agent] = 0.0
 
-        self.mark_random_communication()
+        self.mark_random_communication()  
+        # randomly mark agents as having communicated
 
+        # write updated agent positions back to grid
         for agent in self.agents:
             pos = self.agent_positions[agent]
-            if self.grid[pos[0], pos[1]] == 0:
-                self.grid[pos[0], pos[1]] = self.agent_value(agent)
-            elif self.grid[pos[0], pos[1]] == self.resource_value:
-                self.grid[pos[0], pos[1]] = self.agent_value(agent)
+            self.grid[pos[0], pos[1]] = self.agent_value(agent)
 
+        # update heatmaps
         for agent in self.agents:
             pos = self.agent_positions[agent]
             self.heatmaps[agent][pos[0], pos[1]] += 1
 
         self.step_count += 1
-        self._maybe_add_resource()
+        self._maybe_add_resource()  
+        # probabilistic resource respawn
 
         terminations = {agent: False for agent in self.agents}
         truncations = {agent: False for agent in self.agents}
 
         if len(self.resource_positions) == 0:
-            terminations = {agent: True for agent in self.agents}
+            terminations = {agent: True for agent in self.agents}  
+            # episode ends if no resources left
 
         if self.step_count >= self.max_steps:
-            truncations = {agent: True for agent in self.agents}
+            truncations = {agent: True for agent in self.agents}  
+            # episode truncated by time limit
 
         return self._get_obs(), rewards, terminations, truncations, {agent: {} for agent in self.agents}
 
@@ -187,14 +211,15 @@ class GridWorldEnv(ParallelEnv):
         self.newly_spawned_resources = []
 
         if len(self.resource_positions) >= self.max_resources:
-            return
+            return  # cap number of resources
+
         if np.random.random() >= self.resource_respawn_prob:
-            return
+            return  # only spawn with some probability
 
         try:
             pos = self._sample_empty_arena_cell(exclude=set(self.agent_positions.values()))
         except RuntimeError:
-            return
+            return  # no space available
 
         self.grid[pos[0], pos[1]] = self.resource_value
         self.resource_positions.append(pos)
@@ -204,7 +229,7 @@ class GridWorldEnv(ParallelEnv):
         row, col = pos
 
         if action == 0:
-            return pos
+            return pos  # stay
         elif action == 1:
             row = max(0, row - 1)
         elif action == 2:
@@ -215,14 +240,18 @@ class GridWorldEnv(ParallelEnv):
             col = min(self.grid_size - 1, col + 1)
 
         new_pos = (row, col)
+
+        # block invalid moves
         if not self.is_inside_arena(new_pos[0], new_pos[1]):
             return pos
         if new_pos in self.obstacle_positions:
             return pos
+
         return new_pos
 
     def agent_value(self, agent_id: str) -> int:
-        return self.agent_value_start + self.agents.index(agent_id)
+        return self.agent_value_start + self.agents.index(agent_id)  
+        # map agent id to grid value
 
     def agent_id_from_value(self, value: int) -> Optional[str]:
         if not self.is_agent_value(value):
@@ -230,14 +259,19 @@ class GridWorldEnv(ParallelEnv):
         return self.agents[int(value) - self.agent_value_start]
 
     def is_agent_value(self, value: int) -> bool:
-        return self.agent_value_start <= int(value) < self.obstacle_value
+        return self.agent_value_start <= int(value) < self.obstacle_value  
+        # check if value represents an agent
 
     def is_inside_arena(self, x: int, y: int) -> bool:
-        return is_inside_arena(self.arena_mask, x, y)
+        return is_inside_arena(self.arena_mask, x, y)  
+        # wrapper around mask check
 
     def _sample_empty_arena_cell(self, exclude: Optional[set] = None) -> Tuple[int, int]:
         exclude = exclude or set()
-        valid_cells = np.argwhere((self.grid == 0) & self.arena_mask)
+
+        valid_cells = np.argwhere((self.grid == 0) & self.arena_mask)  
+        # empty cells inside arena
+
         if len(valid_cells) == 0:
             raise RuntimeError("No empty cells available inside the octagon arena.")
 
@@ -249,26 +283,31 @@ class GridWorldEnv(ParallelEnv):
 
     def _get_obs(self) -> Dict[str, np.ndarray]:
         obs_all = {}
+
         for agent in self.agents:
             if not self.partial_observability:
                 obs_all[agent] = self.grid.copy()
-                continue
+                continue  # full grid observation
 
             size = int(self.view_size)
             radius = size // 2
 
             row, col = self.agent_positions[agent]
-            padded = np.pad(self.grid, pad_width=radius, mode="constant", constant_values=0)
+
+            padded = np.pad(self.grid, pad_width=radius, mode="constant", constant_values=0)  
+            # pad so edges work
 
             pr = row + radius
             pc = col + radius
 
             obs = padded[pr - radius : pr + radius + 1, pc - radius : pc + radius + 1]
-            obs_all[agent] = obs[:size, :size].copy()
+            obs_all[agent] = obs[:size, :size].copy()  
+            # local view around agent
+
         return obs_all
 
     def get_heatmaps(self) -> Dict[str, np.ndarray]:
-        return self.heatmaps.copy()
+        return self.heatmaps.copy()  # return visit maps
 
     def get_resources_collected(self) -> Dict[str, int]:
         return self.resources_collected.copy()
@@ -285,4 +324,5 @@ class GridWorldEnv(ParallelEnv):
     def mark_random_communication(self) -> None:
         for agent in self.agents:
             if np.random.random() < self.communication_probability:
-                self.just_communicated[agent] = True
+                self.just_communicated[agent] = True  
+                # randomly mark communication event

@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 from typing import Optional
 
+# --- Make sure project root is on path so imports work when running as script ---
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
@@ -16,11 +17,11 @@ from env.gridworld_env import GridWorldEnv
 from agents.communication import CommunicationLayer
 from agents.ppo_agent import PPOAgent, TORCH_AVAILABLE
 from train.run_simulation import run_episode
-from demos.visualise_episode import animate_episode
+from scripts.visualise_episode import animate_episode
 
 
 def demo_trained_agent(
-    checkpoint_path: str = "checkpoints/ppo_latest.pt",
+    checkpoint_path: str = "checkpoints/run_10000/ppo_latest.pt",
     num_episodes: int = 5,
     reward_scheme: str = "selfish",
     use_communication: bool = False,
@@ -34,9 +35,11 @@ def demo_trained_agent(
     device: str = "cpu",
     environment_name: str = "main_arena",
 ) -> None:
+    # --- Safety check: PPO needs PyTorch ---
     if not TORCH_AVAILABLE:
         raise RuntimeError("Demoing a trained PPO checkpoint requires PyTorch.")
 
+    # --- Create environment with same config as training ---
     env = GridWorldEnv(
         grid_size=grid_size,
         num_agents=num_agents,
@@ -44,14 +47,21 @@ def demo_trained_agent(
         num_obstacles=num_obstacles,
         max_steps=max_steps,
     )
-    ppo_agent = PPOAgent.load(checkpoint_path, device=device)
-    ppo_agent.model.eval()
 
+    # --- Load trained PPO agent from checkpoint ---
+    ppo_agent = PPOAgent.load(checkpoint_path, device=device)
+    ppo_agent.model.eval()  # set model to evaluation mode (no dropout etc.)
+
+    # --- Compute expected observation + action sizes ---
     expected_obs_dim = int(np.prod(env.observation_spaces[env.agents[0]].shape))
+
+    # if communication is enabled, observations are larger
     if use_communication:
         expected_obs_dim += int(CommunicationLayer(env).config.max_ints)
+
     action_dim = int(env.action_spaces[env.agents[0]].n)
 
+    # --- Sanity check: make sure checkpoint matches environment ---
     if ppo_agent.obs_dim != expected_obs_dim or ppo_agent.n_actions != action_dim:
         checkpoint_shape = (ppo_agent.obs_dim, ppo_agent.n_actions)
         expected_shape = (expected_obs_dim, action_dim)
@@ -60,7 +70,10 @@ def demo_trained_agent(
             f"Checkpoint obs/action={checkpoint_shape}; expected={expected_shape}."
         )
 
+    # --- Run demo episodes ---
     for episode in range(num_episodes):
+
+        # run one episode using the trained policy (no learning)
         episode_data = run_episode(
             env=env,
             agents=None,
@@ -73,9 +86,10 @@ def demo_trained_agent(
             reward_scheme=reward_scheme,
             use_communication=use_communication,
             render=True,
-            train_policy=False,
+            train_policy=False,  # IMPORTANT: no training here
         )
 
+        # --- Print quick summary ---
         resources = episode_data["resources_collected"]
         total_reward = float(episode_data["total_shaped_reward"])
         print(
@@ -83,12 +97,14 @@ def demo_trained_agent(
             f"resources={resources}, total_reward={total_reward:.2f}"
         )
 
+        # --- Optionally save animation as GIF ---
         if save_gif_dir is not None:
             os.makedirs(save_gif_dir, exist_ok=True)
             save_path = os.path.join(save_gif_dir, f"trained_episode_{episode + 1:03d}.gif")
         else:
             save_path = None
 
+        # animate episode (either display or save)
         animate_episode(
             episode_data["grid_sequence"],
             save_path=save_path,
@@ -98,25 +114,36 @@ def demo_trained_agent(
 
 
 def parse_args() -> argparse.Namespace:
+    # --- CLI argument parser so you can run this from terminal ---
     parser = argparse.ArgumentParser(description="Visualise a trained PPO checkpoint.")
-    parser.add_argument("--checkpoint", default="checkpoints/ppo_latest.pt")
+
+    parser.add_argument("--checkpoint", default="checkpoints/run_10000/ppo_latest.pt")
     parser.add_argument("--num-episodes", type=int, default=5)
     parser.add_argument("--reward-scheme", default="selfish")
     parser.add_argument("--communication", action="store_true")
+
+    # environment settings
     parser.add_argument("--grid-size", type=int, default=25)
     parser.add_argument("--num-agents", type=int, default=4)
     parser.add_argument("--num-resources", type=int, default=25)
     parser.add_argument("--num-obstacles", type=int, default=45)
     parser.add_argument("--max-steps", type=int, default=250)
+
+    # rendering / output
     parser.add_argument("--interval", type=int, default=50)
     parser.add_argument("--save-gif-dir", default=None)
+
+    # device + label
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--environment-name", default="main_arena")
+
     return parser.parse_args()
 
 
 if __name__ == "__main__":
+    # --- Entry point when running script directly ---
     args = parse_args()
+
     demo_trained_agent(
         checkpoint_path=args.checkpoint,
         num_episodes=args.num_episodes,
