@@ -20,6 +20,29 @@ fork (Phase 0), not here — this folder holds run specs, seeds, and pointers to
 ### E4 (optional) — generalisation
 - Vary `num_resources` (density) and/or `num_agents`; 1 sweep axis, few seeds.
 
+## Launchers
+
+Two unattended scripts. Both run the frozen code via `PYTHONPATH` and write everything
+into `research-paper/runs/` (git-ignored) — nothing outside `research-paper/` is touched.
+
+- `run_sweep.sh` — the multi-seed sweep. Env-var config, parallel jobs, resilient to a
+  single run failing. Examples:
+  ```bash
+  DRYRUN=1 ./run_sweep.sh                          # print the plan only
+  ./run_sweep.sh                                   # 30k eps, 5 seeds, 3 schemes, 4 jobs
+  EPISODES=50000 SEEDS="0 1 2 3 4" ./run_sweep.sh
+  JOBS=2 ./run_sweep.sh                            # lighter on the laptop
+  ```
+- `run_repro.sh` — E1 gate: seed 0, all three schemes, plus a cooperative `team_avg` run
+  to compare both cooperative variants against the frozen `results/run_50000_*`.
+  ```bash
+  EPISODES=30000 ./run_repro.sh
+  ```
+
+**Calibration (M1, 2026-07-28):** ~0.26 s/episode. So ~2.1 h per 30k run; the full
+3 schemes × 5 seeds × 30k sweep is ~8 h wall-clock at `JOBS=4` — one overnight. Jobs run
+single-threaded so 4 pack onto the M1's 4 performance cores. All local, no paid compute.
+
 ## Logging contract
 Every run records: config (all hyperparams + seed + reward variant), per-episode CSV,
 final-100 summary JSON. No number enters the paper unless it traces to one of these.
