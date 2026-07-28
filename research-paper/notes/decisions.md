@@ -24,3 +24,11 @@ Running log of choices that affect the paper. Newest first.
     per-trajectory `last_value`/`last_done`.
   - Reward variant made configurable (`--cooperative-variant plus_own|team_avg`).
   - Verified: smoke test passes (determinism holds, seeds diverge, all schemes finite).
+- 2026-07-28 — **Calibration on M1:** ~0.26 s/episode → 30k run ≈ 2.1 h, 50k ≈ 3.5 h.
+  Full 3 schemes × 5 seeds × 30k ≈ 8 h at JOBS=4 (fits one overnight). All local/free.
+- 2026-07-28 — **Built unattended launchers** `experiments/run_sweep.sh` (parallel
+  multi-seed) + `run_repro.sh` (E1). Outputs → `research-paper/runs/` (git-ignored via
+  `research-paper/.gitignore`). Full pipeline smoke-tested end-to-end (training + auto
+  analysis plots). **Decision: 30k episodes, JOBS=4, single-thread per job.**
+- 2026-07-28 — Commit style confirmed: short lowercase student-style, ~10 per push,
+  no Claude co-author trailer.
