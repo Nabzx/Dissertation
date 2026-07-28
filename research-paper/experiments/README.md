@@ -43,6 +43,18 @@ into `research-paper/runs/` (git-ignored) — nothing outside `research-paper/` 
 3 schemes × 5 seeds × 30k sweep is ~8 h wall-clock at `JOBS=4` — one overnight. Jobs run
 single-threaded so 4 pack onto the M1's 4 performance cores. All local, no paid compute.
 
+## Analysis
+
+- `aggregate.py` — after a sweep, groups runs by scheme across seeds and reports the
+  headline table (mean ± std, 95% CI) plus pairwise **Welch t-tests** and Cohen's d.
+  Pure NumPy (no scipy). Writes markdown + json into `../runs/analysis/`.
+  ```bash
+  python aggregate.py --episodes 30000                       # workspace runs
+  python aggregate.py --results-root ../../results --episodes 50000   # frozen data
+  ```
+  Validated against the frozen results: it reproduces the dissertation's 50k numbers
+  exactly (n=1 → p-values n/a until the multi-seed sweep provides ≥2 seeds).
+
 ## Logging contract
 Every run records: config (all hyperparams + seed + reward variant), per-episode CSV,
 final-100 summary JSON. No number enters the paper unless it traces to one of these.
