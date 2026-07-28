@@ -9,21 +9,16 @@ submit to a MARL-focused workshop. Ordered by dependency — do not skip Phase 0
 
 Make the pipeline trustworthy before we scale it up.
 
-- [ ] **Fork the code.** Create a working copy we're allowed to edit. Recommended:
-      a git branch `paper` in the repo, *plus* this folder for artifacts. (A branch keeps
-      the original files untouched on `main` while giving us a mutable tree. Alternatively
-      copy `agents/ env/ train/ analysis/` into `research-paper/code/` — heavier, but
-      fully isolated. Decision pending — see `notes/decisions.md`.)
-- [ ] **Resolve the reward-equation mismatch** (`ISSUES.md` #1). Decide whether the
-      published finding used `team_avg + 0.1*own` (what the code does) or the pure team
-      average (what the paper says). Re-run to confirm which reproduces the 50k numbers,
-      then make code and paper agree.
-- [ ] **Seed everything** (`ISSUES.md` #3): NumPy *and* PyTorch weight init *and* Python
-      `random`, from a single `--seed`. This is the prerequisite for Phase 1.
-- [ ] **Fix truncation bootstrapping** (`ISSUES.md` #2): 250-step truncations should
-      bootstrap from the value estimate, not be treated as terminal.
-- [ ] **Reproduce the headline ordering** (selfish > mixed > cooperative) once on the
-      forked code to confirm nothing broke. Sanity gate before spending compute.
+- [x] **Fork the code.** Working on git branch `paper`; `main` stays frozen. _(2026-07-28)_
+- [~] **Resolve the reward-equation mismatch** (`ISSUES.md` #1). Code now supports both via
+      `--cooperative-variant plus_own|team_avg` (default preserves frozen behaviour). Still
+      need the E1 run to confirm which reproduces the 50k numbers, then standardise.
+- [x] **Seed everything** (`ISSUES.md` #3): `set_global_seeds()` seeds Python/NumPy/PyTorch;
+      `--seed` flag; disjoint per-seed episode streams. Verified deterministic. _(2026-07-28)_
+- [x] **Fix truncation bootstrapping** (`ISSUES.md` #2): per-step done = termination only;
+      truncation bootstraps each agent from `V(s_T)`. _(2026-07-28)_
+- [ ] **Reproduce the headline ordering** (selfish > mixed > cooperative) — run `run_repro.sh`
+      (E1). Sanity gate before the full multi-seed sweep. Launcher built + smoke-tested.
 
 ## Phase 1 — Statistical rigour (non-negotiable for publication)
 
