@@ -20,6 +20,18 @@ except Exception:
     optim = object
 
 
+def set_global_seeds(seed: int) -> None:
+    # seed every RNG that affects a run: Python, NumPy and (crucially) PyTorch
+    # weight initialisation, which the original code left unseeded. Prerequisite
+    # for multi-seed experiments where reward scheme is the only variable.
+    import random as _random
+
+    _random.seed(seed)
+    np.random.seed(seed)
+    if TORCH_AVAILABLE:
+        torch.manual_seed(seed)
+
+
 @dataclass
 class PPOConfig:
     gamma: float = 0.99  # discount factor
@@ -117,6 +129,17 @@ class PPOAgent:
         value_estimate = 0.0
         return action, log_prob, value_estimate
 
+    def get_value(self, obs: np.ndarray) -> float:
+        # value estimate V(s) only, no action sampled.
+        # used to bootstrap GAE when an episode ends by truncation (step limit)
+        # rather than genuine termination (resource depletion).
+        if TORCH_AVAILABLE:
+            obs_t = torch.from_numpy(obs.astype(np.float32)).to(self.device_t)
+            with torch.no_grad():
+                _, value = self.model(obs_t.unsqueeze(0))
+            return float(value.item())
+        return 0.0
+
     def store_transition(
         self,
         obs: np.ndarray,
@@ -136,8 +159,16 @@ class PPOAgent:
         self.buffer["values"].append(np.array(value, dtype=np.float32))
         self.buffer["trajectory_ids"].append(trajectory_id)
 
+    @staticmethod
+    def _resolve_per_trajectory(param, trajectory_id, default):
+        # last_value / last_done may be a single scalar shared across trajectories,
+        # or a dict keyed by trajectory_id (one bootstrap value per agent).
+        if isinstance(param, dict):
+            return param.get(trajectory_id, default)
+        return param
+
     def _compute_returns_and_advantages(
-        self, last_value: float = 0.0, last_done: bool = True
+        self, last_value=0.0, last_done=True
     ) -> Tuple[np.ndarray, np.ndarray]:
 
         rewards = np.array(self.buffer["rewards"], dtype=np.float32)
@@ -155,11 +186,16 @@ class PPOAgent:
             indices = [idx for idx, tid in enumerate(trajectory_ids) if tid == trajectory_id]
             last_gae = 0.0
 
+            # per-trajectory bootstrap: on truncation, next_value = V(s_T) so the
+            # value target accounts for the (non-terminal) future beyond the step limit.
+            traj_last_done = self._resolve_per_trajectory(last_done, trajectory_id, True)
+            traj_last_value = self._resolve_per_trajectory(last_value, trajectory_id, 0.0)
+
             for pos in reversed(range(len(indices))):  # go backwards for GAE
                 idx = indices[pos]
 
                 if pos == len(indices) - 1:
-                    next_value = 0.0 if last_done else float(last_value)
+                    next_value = 0.0 if traj_last_done else float(traj_last_value)
                 else:
                     next_value = values[indices[pos + 1]]
 
@@ -190,7 +226,9 @@ class PPOAgent:
 
         return returns, advantages
 
-    def update(self, last_value: float = 0.0, last_done: bool = True) -> Dict[str, float]:
+    def update(self, last_value=0.0, last_done=True) -> Dict[str, float]:
+        # last_value / last_done accept a scalar (shared) or a dict keyed by
+        # trajectory_id, so each agent's trajectory can bootstrap from its own V(s_T).
         if not TORCH_AVAILABLE:
             raise RuntimeError("PPOAgent.update() called but torch not installed")
 
