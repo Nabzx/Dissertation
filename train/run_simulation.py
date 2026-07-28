@@ -35,9 +35,14 @@ def run_episode(
     use_communication: bool = False,
     render: bool = False,
     train_policy: bool = True,
+    episode_seed: Optional[int] = None,
+    cooperative_variant: str = "plus_own",
 ) -> Dict:
     # --- reset env and get initial observations ---
-    raw_obs, infos = env.reset(seed=episode_num)
+    # episode_seed lets a master seed control the episode stream; falls back to
+    # episode_num to reproduce the original (frozen) behaviour exactly.
+    seed_to_use = episode_seed if episode_seed is not None else episode_num
+    raw_obs, infos = env.reset(seed=seed_to_use)
 
     agent_type = agent_type.lower()
     reward_scheme = reward_scheme.lower()
@@ -126,6 +131,7 @@ def run_episode(
                 cumulative_collected=cumulative_collected,
                 total_spawned=total_spawned,
                 alpha=0.5,
+                cooperative_variant=cooperative_variant,
             )
 
         total_shaped_reward += sum(shaped_rewards.values())
@@ -133,7 +139,9 @@ def run_episode(
         # --- store transitions for PPO ---
         if agent_type == "ppo" and train_policy:
             for agent_id in env.agents:
-                done = bool(terminations[agent_id] or truncations[agent_id])
+                # store ONLY genuine termination as done. Truncation (step limit) is
+                # not terminal for bootstrapping, so it must not zero the GAE tail.
+                done = bool(terminations[agent_id])
                 ppo_agent.store_transition(
                     obs=step_flat_obs[agent_id],
                     action=actions[agent_id],
@@ -179,8 +187,24 @@ def run_episode(
     # --- update PPO after episode ---
     ppo_metrics = None
     if agent_type == "ppo" and train_policy:
+        # If the episode ended by genuine termination (all resources depleted),
+        # there is no future to bootstrap: last_value = 0, last_done = True.
+        # If it ended by truncation (250-step limit), bootstrap each agent's tail
+        # from V(s_T) of its final observation so value targets aren't biased.
+        episode_terminated = all(terminations.values())
+        if episode_terminated:
+            last_value = 0.0
+            last_done = True
+        else:
+            last_value = {}
+            for agent_id in env.agents:
+                final_obs = obs[agent_id]
+                final_flat = final_obs if final_obs.ndim == 1 else final_obs.flatten()
+                last_value[agent_id] = ppo_agent.get_value(final_flat)
+            last_done = False
+
         try:
-            ppo_metrics = ppo_agent.update(last_value=0.0, last_done=True)
+            ppo_metrics = ppo_agent.update(last_value=last_value, last_done=last_done)
         except RuntimeError as exc:
             print(f"[ppo] Update skipped: {exc}")
 
