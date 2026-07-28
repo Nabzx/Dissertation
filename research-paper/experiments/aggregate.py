@@ -224,7 +224,11 @@ def main():
     report = build_report(groups)
     print(report)
 
-    out_path = Path(args.out) if args.out else root.parent / "analysis" / f"aggregate_{args.episodes}.md"
+    # default output always lands inside the git-ignored workspace, regardless of
+    # which results-root was analysed (so pointing at the frozen tree never writes to it).
+    here = Path(__file__).resolve().parent
+    default_out = here / ".." / "runs" / "analysis" / f"aggregate_{args.episodes}.md"
+    out_path = Path(args.out) if args.out else default_out.resolve()
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(report)
     # also dump the raw grouped values for downstream plotting
