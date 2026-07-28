@@ -35,7 +35,7 @@ except ImportError:
 # --- project imports ---
 from env.gridworld_env import GridWorldEnv
 from agents.communication import CommunicationLayer
-from agents.ppo_agent import PPOAgent, TORCH_AVAILABLE
+from agents.ppo_agent import PPOAgent, TORCH_AVAILABLE, set_global_seeds
 from train.run_simulation import run_episode
 
 
@@ -54,13 +54,18 @@ def train_headless(
     num_obstacles: int = 45,
     max_steps: int = 250,
     device: str = "cpu",
+    seed: int = 0,
+    cooperative_variant: str = "plus_own",
 ) -> List[Dict]:
     # --- PPO requires PyTorch ---
     if not TORCH_AVAILABLE:
         raise RuntimeError("Headless PPO training requires PyTorch.")
 
-    # --- create run-specific directory names ---
-    run_name = f"run_{num_episodes}_{reward_scheme}"
+    # --- seed everything (Python / NumPy / PyTorch) for reproducible, comparable runs ---
+    set_global_seeds(seed)
+
+    # --- create run-specific directory names (seed included so runs never collide) ---
+    run_name = f"run_{num_episodes}_{reward_scheme}_seed{seed}"
 
     # adjust default paths to include run_name
     if checkpoint_dir == "checkpoints":
@@ -122,6 +127,10 @@ def train_headless(
             use_communication=use_communication,
             render=False,
             train_policy=True,
+            # disjoint episode-seed stream per master seed; base seed 0 reproduces
+            # the original episode sequence (0..N-1) exactly.
+            episode_seed=seed * num_episodes + episode,
+            cooperative_variant=cooperative_variant,
         )
 
         # --- extract key metrics ---
@@ -319,6 +328,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--num-obstacles", type=int, default=45)
     parser.add_argument("--max-steps", type=int, default=250)
     parser.add_argument("--device", default="cpu")
+    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument(
+        "--cooperative-variant",
+        default="plus_own",
+        choices=["plus_own", "team_avg"],
+        help="cooperative reward form: plus_own (frozen default) or team_avg (paper eq 2.7)",
+    )
     return parser.parse_args()
 
 
@@ -340,4 +356,6 @@ if __name__ == "__main__":
         num_obstacles=args.num_obstacles,
         max_steps=args.max_steps,
         device=args.device,
+        seed=args.seed,
+        cooperative_variant=args.cooperative_variant,
     )
