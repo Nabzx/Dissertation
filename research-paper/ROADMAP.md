@@ -27,7 +27,8 @@ Reviewers will reject a headline claim from n=1. This phase converts anecdote �
 
 - [x] Run **5 seeds** × 3 conditions at 30k episodes (15 runs). _(2026-07-29)_
 - [x] Report **mean ± std / 95% CI** on the metrics — see `results/phase1_multiseed.md`.
-- [ ] Plot learning curves with **confidence bands** across seeds (not a single trace). ← NEXT
+- [x] Plot learning curves with **confidence bands** across seeds — `experiments/plot_curves.py`
+      → `results/figures/learning_curves.png`. _(2026-07-30)_
 - [x] **Significance test** — Welch t-tests + Cohen's d in `aggregate.py`. _(2026-07-29)_
 - [x] **Story decided:** *{selfish, mixed} ≫ cooperative*, p<0.001, d=4–6 for
       selfish>cooperative. selfish vs mixed is small/mostly n.s. — claim the honest version,
@@ -37,10 +38,10 @@ Reviewers will reject a headline claim from n=1. This phase converts anecdote �
 
 A single gridworld with 3 discrete conditions is thin for a standalone paper. Add depth:
 
-- [ ] **α-sweep (highest leverage, low cost).** Mixed reward already has an `alpha`; sweep
-      α ∈ {0, 0.25, 0.5, 0.75, 1.0} (0 = cooperative, 1 = selfish). Turns 3 discrete bars
-      into a **curve** of cooperation/fairness/efficiency vs. selfishness. Far more
-      compelling and directly tests the mechanism.
+- [~] **α-sweep (highest leverage, low cost).** WIRING DONE _(2026-07-30)_: `--alpha` plumbed
+      through, `run_alpha.sh` launcher built, endpoints verified (α=1≡selfish, α=0≡cooperative).
+      Sweep α ∈ {0,0.25,0.5,0.75,1.0} turns 3 discrete bars into a **curve**. RUN PENDING
+      (one overnight, ~8h), then build the α-curve plot.
 - [ ] **A non-circular cooperation metric** (`ISSUES.md` #4). Current score = efficiency ×
       fairness (circular). Add an independent measure: e.g. a free-riding index (Gini of
       per-agent contribution), counterfactual contribution, or territory-overlap.

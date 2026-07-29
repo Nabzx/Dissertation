@@ -9,6 +9,13 @@ Running log of choices that affect the paper. Newest first.
   metric vs. generalisation sweep vs. MAPPO baseline) — _undecided_
 
 ## Made
+- 2026-07-30 — **Figure 2 built** (`plot_curves.py` → `results/figures/learning_curves.png`):
+  5-seed learning curves, ±1 s.d. bands. Cooperative collapses & recovers slowly; selfish/mixed
+  overlap but dominate cooperative — matches the significance tests visually.
+- 2026-07-30 — **α-sweep wired & ready.** `--alpha` plumbed through rewards/run/train; mixed
+  reward now uses configurable α (was hardcoded 0.5); `run_alpha.sh` built. Endpoints verified
+  EXACT: mixed α=1 ≡ selfish, α=0 ≡ cooperative(team_avg). run_name tags mixed dirs with α.
+  Ready to launch (~8h overnight for 5α × 3 seeds).
 - 2026-07-29 — **PHASE 1 DONE. Result is statistically robust (5 seeds).**
   selfish > cooperative: p<0.001, Cohen's d = 4–6 on efficiency/fairness/cooperation.
   cooperative < mixed: p<0.05–0.01. selfish vs mixed: small, mostly n.s. Claim to make:
