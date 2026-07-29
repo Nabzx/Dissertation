@@ -25,15 +25,13 @@ Make the pipeline trustworthy before we scale it up.
 The paper itself names single-seed as its most significant limitation (§5.5, §6.3.1).
 Reviewers will reject a headline claim from n=1. This phase converts anecdote → result.
 
-- [ ] Run **≥5 seeds** (target 8–10) × 3 conditions. ~15–30 runs. Each 50k-episode run is
-      CPU-only; budget wall-clock and consider dropping to 20–30k episodes if the plateau
-      is reached earlier (justify from the curves).
-- [ ] Report **mean ± std / 95% CI** on the four metrics over the final-100-episode window.
-- [ ] Plot learning curves with **confidence bands** across seeds (not a single trace).
-- [ ] **Significance test** the pairwise gaps (Welch's t-test or Mann–Whitney U on the
-      per-seed final metrics). State effect sizes, not just p-values.
-- [ ] Decide the story: does "selfish > cooperative" survive across seeds? If it narrows
-      or flips, that is *still* a paper — just a more honest one.
+- [x] Run **5 seeds** × 3 conditions at 30k episodes (15 runs). _(2026-07-29)_
+- [x] Report **mean ± std / 95% CI** on the metrics — see `results/phase1_multiseed.md`.
+- [ ] Plot learning curves with **confidence bands** across seeds (not a single trace). ← NEXT
+- [x] **Significance test** — Welch t-tests + Cohen's d in `aggregate.py`. _(2026-07-29)_
+- [x] **Story decided:** *{selfish, mixed} ≫ cooperative*, p<0.001, d=4–6 for
+      selfish>cooperative. selfish vs mixed is small/mostly n.s. — claim the honest version,
+      not a strict 3-way ordering. _(2026-07-29)_
 
 ## Phase 2 — Deepen the contribution (pick 1–2, highest leverage first)
 
