@@ -64,8 +64,15 @@ def train_headless(
     # --- seed everything (Python / NumPy / PyTorch) for reproducible, comparable runs ---
     set_global_seeds(seed)
 
-    # --- create run-specific directory names (seed included so runs never collide) ---
-    run_name = f"run_{num_episodes}_{reward_scheme}_seed{seed}"
+    # --- create run-specific directory names (seed + variant so runs never collide) ---
+    # the cooperative variant is part of the identity for cooperative runs, otherwise
+    # two cooperative runs (plus_own vs team_avg) would overwrite each other.
+    variant_tag = (
+        f"_{cooperative_variant}"
+        if reward_scheme in ("cooperative", "fully_cooperative")
+        else ""
+    )
+    run_name = f"run_{num_episodes}_{reward_scheme}_seed{seed}{variant_tag}"
 
     # adjust default paths to include run_name
     if checkpoint_dir == "checkpoints":
