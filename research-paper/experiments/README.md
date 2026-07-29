@@ -38,6 +38,13 @@ into `research-paper/runs/` (git-ignored) — nothing outside `research-paper/` 
   ```bash
   EPISODES=30000 ./run_repro.sh
   ```
+- `run_alpha.sh` — Phase 2 α-sweep: `mixed` reward across α ∈ {0,0.25,0.5,0.75,1.0} × seeds.
+  α=1 == selfish, α=0 == cooperative(team_avg) (endpoints double as consistency checks —
+  verified exact). Dirs: `run_<EP>_mixed_a<α>_seed<N>`. ~8h for 5α × 3 seeds at JOBS=4.
+  ```bash
+  ./run_alpha.sh                        # full sweep
+  ALPHAS="0.25 0.75" ./run_alpha.sh     # only the mid-points not already covered
+  ```
 
 **Calibration (M1, 2026-07-28):** ~0.26 s/episode. So ~2.1 h per 30k run; the full
 3 schemes × 5 seeds × 30k sweep is ~8 h wall-clock at `JOBS=4` — one overnight. Jobs run
@@ -54,6 +61,12 @@ single-threaded so 4 pack onto the M1's 4 performance cores. All local, no paid 
   ```
   Validated against the frozen results: it reproduces the dissertation's 50k numbers
   exactly (n=1 → p-values n/a until the multi-seed sweep provides ≥2 seeds).
+- `plot_curves.py` — multi-seed learning curves with ±1 s.d. bands (paper Figure 2).
+  Streams the per-seed CSVs, computes per-episode efficiency & Jain fairness, averages
+  across seeds. Writes `../results/figures/learning_curves.png`.
+  ```bash
+  python plot_curves.py --episodes 30000
+  ```
 
 ## Logging contract
 Every run records: config (all hyperparams + seed + reward variant), per-episode CSV,
