@@ -56,6 +56,7 @@ def train_headless(
     device: str = "cpu",
     seed: int = 0,
     cooperative_variant: str = "plus_own",
+    alpha: float = 0.5,
 ) -> List[Dict]:
     # --- PPO requires PyTorch ---
     if not TORCH_AVAILABLE:
@@ -67,12 +68,13 @@ def train_headless(
     # --- create run-specific directory names (seed + variant so runs never collide) ---
     # the cooperative variant is part of the identity for cooperative runs, otherwise
     # two cooperative runs (plus_own vs team_avg) would overwrite each other.
-    variant_tag = (
-        f"_{cooperative_variant}"
-        if reward_scheme in ("cooperative", "fully_cooperative")
-        else ""
-    )
-    run_name = f"run_{num_episodes}_{reward_scheme}_seed{seed}{variant_tag}"
+    if reward_scheme in ("cooperative", "fully_cooperative"):
+        reward_tag = f"_{cooperative_variant}"
+    elif reward_scheme == "mixed":
+        reward_tag = f"_a{alpha:g}"  # e.g. _a0.25 ; keeps alpha-sweep runs distinct
+    else:
+        reward_tag = ""
+    run_name = f"run_{num_episodes}_{reward_scheme}_seed{seed}{reward_tag}"
 
     # adjust default paths to include run_name
     if checkpoint_dir == "checkpoints":
@@ -138,6 +140,7 @@ def train_headless(
             # the original episode sequence (0..N-1) exactly.
             episode_seed=seed * num_episodes + episode,
             cooperative_variant=cooperative_variant,
+            alpha=alpha,
         )
 
         # --- extract key metrics ---
@@ -342,6 +345,12 @@ def parse_args() -> argparse.Namespace:
         choices=["plus_own", "team_avg"],
         help="cooperative reward form: plus_own (frozen default) or team_avg (paper eq 2.7)",
     )
+    parser.add_argument(
+        "--alpha",
+        type=float,
+        default=0.5,
+        help="mixed-reward weight r=alpha*own+(1-alpha)*team_avg (1=selfish, 0=cooperative)",
+    )
     return parser.parse_args()
 
 
@@ -365,4 +374,5 @@ if __name__ == "__main__":
         device=args.device,
         seed=args.seed,
         cooperative_variant=args.cooperative_variant,
+        alpha=args.alpha,
     )

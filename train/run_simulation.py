@@ -37,6 +37,7 @@ def run_episode(
     train_policy: bool = True,
     episode_seed: Optional[int] = None,
     cooperative_variant: str = "plus_own",
+    alpha: float = 0.5,
 ) -> Dict:
     # --- reset env and get initial observations ---
     # episode_seed lets a master seed control the episode stream; falls back to
@@ -130,7 +131,7 @@ def run_episode(
                 raw_rewards=rewards,
                 cumulative_collected=cumulative_collected,
                 total_spawned=total_spawned,
-                alpha=0.5,
+                alpha=alpha,
                 cooperative_variant=cooperative_variant,
             )
 
