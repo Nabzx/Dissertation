@@ -8,7 +8,10 @@ Severity: 🔴 blocks publication · 🟠 must fix for credibility · 🟡 polis
 
 ---
 
-### #1 🔴 Reward equation: paper ≠ code
+### #1 ✅ RESOLVED (2026-07-29) — Reward equation: paper ≠ code
+- **Resolution:** paper standardises on the pure `team_avg` variant (matches eq 2.7, the α=0
+  endpoint of `α·own+(1−α)·team_avg`). `--cooperative-variant team_avg` is the sweep default;
+  `plus_own` dropped. Below kept for the record.
 - **Where:** `env/rewards.py:19` — cooperative returns `team_avg + 0.1 * own`.
 - **Paper says:** eq 2.7 and §3.4.2 describe the pure team average `(1/N) Σ r_j`; the
   "avoiding hard-coded cooperation" argument assumes individual contribution is invisible.
