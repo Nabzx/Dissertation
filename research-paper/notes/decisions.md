@@ -9,6 +9,10 @@ Running log of choices that affect the paper. Newest first.
   metric vs. generalisation sweep vs. MAPPO baseline) — _undecided_
 
 ## Made
+- 2026-07-29 — **PHASE 1 DONE. Result is statistically robust (5 seeds).**
+  selfish > cooperative: p<0.001, Cohen's d = 4–6 on efficiency/fairness/cooperation.
+  cooperative < mixed: p<0.05–0.01. selfish vs mixed: small, mostly n.s. Claim to make:
+  *{selfish, mixed} ≫ cooperative*. Evidence saved in `results/phase1_multiseed.{md,json}`.
 - 2026-07-29 — **E1 reproduction PASSED.** Fixed code (30k, seeded, truncation-bootstrapped)
   reproduces selfish > mixed > cooperative on efficiency (0.655 > 0.631 > 0.531), fairness
   (0.714 > 0.684 > 0.652) and cooperation (0.478 > 0.437 > 0.351). Ordering holds; gap is
