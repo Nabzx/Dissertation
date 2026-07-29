@@ -9,6 +9,7 @@ def compute_reward(
     team_total: float,
     scheme: str,
     cooperative_variant: str = "plus_own",
+    alpha: float = 0.5,
 ) -> float:
     scheme = scheme.lower()  # normalise input
 
@@ -30,9 +31,10 @@ def compute_reward(
             return team_avg
         return team_avg + 0.1 * own
 
-    # mix of selfish + cooperative
+    # mix of selfish + cooperative: r_i = alpha*own + (1-alpha)*team_avg.
+    # alpha=1 recovers selfish, alpha=0 recovers cooperative (team_avg). Enables the
+    # alpha-sweep that turns the three discrete conditions into a continuous curve.
     if scheme == "mixed":
-        alpha = 0.5
         return alpha * own + (1 - alpha) * team_avg
 
     return own  # fallback
@@ -63,12 +65,12 @@ def fully_cooperative_rewards(raw_rewards: Dict[str, float]) -> Dict[str, float]
     return cooperative_rewards(raw_rewards)
 
 
-def mixed_rewards(raw_rewards: Dict[str, float]) -> Dict[str, float]:
+def mixed_rewards(raw_rewards: Dict[str, float], alpha: float = 0.5) -> Dict[str, float]:
     team_total = float(sum(raw_rewards.values()))
 
-    # blend of individual + team reward
+    # blend of individual + team reward, controlled by alpha
     return {
-        agent: compute_reward(agent, raw_rewards, team_total, "mixed")
+        agent: compute_reward(agent, raw_rewards, team_total, "mixed", alpha=alpha)
         for agent in raw_rewards
     }
 
@@ -91,6 +93,6 @@ def apply_reward_scheme(
         return cooperative_rewards(raw_rewards, cooperative_variant)
 
     if scheme == "mixed":
-        return mixed_rewards(raw_rewards)
+        return mixed_rewards(raw_rewards, alpha)
 
     return selfish_rewards(raw_rewards)  # default fallback
