@@ -135,10 +135,15 @@ def discover(results_root: Path, episodes: int, schemes: List[str]) -> Dict[str,
         summ = d / "summary.json"
         if not summ.is_file():
             continue
-        m = re.match(rf"run_{episodes}_([a-z_]+?)(?:_seed(\d+))?(?:_(plus_own|team_avg))?$", d.name)
+        m = re.match(
+            rf"run_{episodes}_([a-z_]+?)(?:_seed(\d+))?(?:_(plus_own|team_avg))?(_indep)?$", d.name
+        )
         if not m:
             continue
-        scheme, seed, variant = m.group(1), m.group(2), m.group(3)
+        scheme, seed, variant, indep = m.group(1), m.group(2), m.group(3), m.group(4)
+        # independent-policy runs are a distinct condition, not extra seeds of the shared one
+        if indep:
+            scheme = f"{scheme}_indep"
         if scheme not in out:
             continue
         data = json.loads(summ.read_text())
