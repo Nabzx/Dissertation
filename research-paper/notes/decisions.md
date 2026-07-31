@@ -9,6 +9,10 @@ Running log of choices that affect the paper. Newest first.
   metric vs. generalisation sweep vs. MAPPO baseline) — _undecided_
 
 ## Made
+- 2026-07-30 — **PHASE 2 α-sweep DONE.** Curve: metrics rise steeply α=0→0.25 then plateau
+  (knee ≈0.25) → "a little individual incentive recovers most performance; the harm is
+  specific to pure team-average reward." Endpoints byte-match standalone selfish/cooperative.
+  Evidence: `results/phase2_alpha.{md,json}`, `figures/alpha_sweep.png`. Used 3 seeds.
 - 2026-07-30 — **Figure 2 built** (`plot_curves.py` → `results/figures/learning_curves.png`):
   5-seed learning curves, ±1 s.d. bands. Cooperative collapses & recovers slowly; selfish/mixed
   overlap but dominate cooperative — matches the significance tests visually.

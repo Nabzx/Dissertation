@@ -38,10 +38,9 @@ Reviewers will reject a headline claim from n=1. This phase converts anecdote �
 
 A single gridworld with 3 discrete conditions is thin for a standalone paper. Add depth:
 
-- [~] **α-sweep (highest leverage, low cost).** WIRING DONE _(2026-07-30)_: `--alpha` plumbed
-      through, `run_alpha.sh` launcher built, endpoints verified (α=1≡selfish, α=0≡cooperative).
-      Sweep α ∈ {0,0.25,0.5,0.75,1.0} turns 3 discrete bars into a **curve**. RUN PENDING
-      (one overnight, ~8h), then build the α-curve plot.
+- [x] **α-sweep DONE** _(2026-07-30)_: 5 α × 3 seeds run; curve built
+      (`figures/alpha_sweep.png`, `results/phase2_alpha.md`). Steep rise α=0→0.25 then
+      plateau; knee at α≈0.25; endpoints byte-match standalone selfish/cooperative.
 - [ ] **A non-circular cooperation metric** (`ISSUES.md` #4). Current score = efficiency ×
       fairness (circular). Add an independent measure: e.g. a free-riding index (Gini of
       per-agent contribution), counterfactual contribution, or territory-overlap.
