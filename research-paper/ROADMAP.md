@@ -52,8 +52,10 @@ A single gridworld with 3 discrete conditions is thin for a standalone paper. Ad
 
 ## Phase 3 — Write the paper (~8 pages)
 
-- [ ] Draft in `paper/` following `paper/OUTLINE.md`, in the target venue's template.
-- [ ] Rebuild figures from Phase 1/2 data (confidence bands, α-curve).
+- [x] Draft in `paper/` — full first draft `paper/main.tex` (ACM sigconf) + `references.bib`,
+      all sections, Table 1 + Figs 2–4 with real numbers. _(2026-07-30)_ Venue: ALA@AAMAS
+      (8pg, non-archival, double-blind), targeting ALA 2027 (~Feb 2027 deadline).
+- [x] Rebuild figures from Phase 1/2 data (confidence bands, α-curve). _(2026-07-30)_
 - [ ] **Related work**: position against sequential social dilemmas (Leibo et al. 2017),
       MAPPO (Yu et al. 2022), Jain fairness, tragedy of the commons. Replace weak
       dissertation citations (Medium / ResearchGate figures — `ISSUES.md` #6).
