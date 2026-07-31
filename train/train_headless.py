@@ -56,6 +56,7 @@ def train_headless(
     device: str = "cpu",
     seed: int = 0,
     cooperative_variant: str = "plus_own",
+    independent: bool = False,
     alpha: float = 0.5,
 ) -> List[Dict]:
     # --- PPO requires PyTorch ---
@@ -74,7 +75,8 @@ def train_headless(
         reward_tag = f"_a{alpha:g}"  # e.g. _a0.25 ; keeps alpha-sweep runs distinct
     else:
         reward_tag = ""
-    run_name = f"run_{num_episodes}_{reward_scheme}_seed{seed}{reward_tag}"
+    arch_tag = "_indep" if independent else ""  # keep the ablation separate from shared-weight runs
+    run_name = f"run_{num_episodes}_{reward_scheme}_seed{seed}{reward_tag}{arch_tag}"
 
     # adjust default paths to include run_name
     if checkpoint_dir == "checkpoints":
@@ -109,8 +111,14 @@ def train_headless(
         obs_dim += int(CommunicationLayer(env).config.max_ints)
     action_dim = int(env.action_spaces[env.agents[0]].n)
 
-    # --- initialise PPO agent ---
-    ppo_agent = PPOAgent(obs_dim=obs_dim, n_actions=action_dim, device=device)
+    # --- initialise PPO agent (shared-weight by default; independent = one net per agent) ---
+    if independent:
+        from agents.independent_ppo import IndependentPPO
+        ppo_agent = IndependentPPO(
+            agent_ids=list(env.agents), obs_dim=obs_dim, n_actions=action_dim, device=device
+        )
+    else:
+        ppo_agent = PPOAgent(obs_dim=obs_dim, n_actions=action_dim, device=device)
 
     metrics: List[Dict] = []
     last_episodes: List[Dict] = []  # store final 100 episodes for analysis
@@ -351,6 +359,11 @@ def parse_args() -> argparse.Namespace:
         default=0.5,
         help="mixed-reward weight r=alpha*own+(1-alpha)*team_avg (1=selfish, 0=cooperative)",
     )
+    parser.add_argument(
+        "--independent",
+        action="store_true",
+        help="one policy network per agent instead of shared weights (ablation)",
+    )
     return parser.parse_args()
 
 
@@ -375,4 +388,5 @@ if __name__ == "__main__":
         seed=args.seed,
         cooperative_variant=args.cooperative_variant,
         alpha=args.alpha,
+        independent=args.independent,
     )
