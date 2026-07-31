@@ -41,14 +41,19 @@ A single gridworld with 3 discrete conditions is thin for a standalone paper. Ad
 - [x] **α-sweep DONE** _(2026-07-30)_: 5 α × 3 seeds run; curve built
       (`figures/alpha_sweep.png`, `results/phase2_alpha.md`). Steep rise α=0→0.25 then
       plateau; knee at α≈0.25; endpoints byte-match standalone selfish/cooperative.
-- [ ] **A non-circular cooperation metric** (`ISSUES.md` #4). Current score = efficiency ×
-      fairness (circular). Add an independent measure: e.g. a free-riding index (Gini of
-      per-agent contribution), counterfactual contribution, or territory-overlap.
+- [x] **A non-circular cooperation metric DONE** _(2026-07-30, resolves `ISSUES.md` #4)_:
+      free-rider fraction + contribution Gini (`experiments/freerider.py`,
+      `results/freerider.md`). Cooperative free-rides significantly MORE than selfish
+      (0.307 vs 0.251, p=0.002, d=3.0) and mixed — direct evidence for the mechanism.
+      Added to paper as Table 2.
 - [ ] **Generalisation sweep** (optional): vary resource density and/or agent count to show
       the finding isn't specific to 25 resources / 4 agents / one map.
-- [ ] **Stronger baseline** (optional, higher cost): a centralised-critic learner (MAPPO)
-      or independent (non-shared-weight) policies, to show the effect isn't an artifact of
-      shared-weight learners (paper flags this in §5.5, §6.3.2–6.3.3).
+- [~] **Independent-policies ablation WIRED** _(2026-07-30)_: `agents/independent_ppo.py`
+      (one net per agent), `--independent` flag, `run_ablation.sh`. Verified: nets diverge,
+      shared-weight path unchanged (no regression). RUN PENDING (~5h) — then insert results
+      into the paper's threats-to-validity section.
+- [ ] **MAPPO centralised-critic baseline** (optional, higher cost) — bank for a full-paper
+      version.
 
 ## Phase 3 — Write the paper (~8 pages)
 
