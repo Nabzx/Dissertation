@@ -50,6 +50,15 @@ into `research-paper/runs/` (git-ignored) — nothing outside `research-paper/` 
 3 schemes × 5 seeds × 30k sweep is ~8 h wall-clock at `JOBS=4` — one overnight. Jobs run
 single-threaded so 4 pack onto the M1's 4 performance cores. All local, no paid compute.
 
+- `run_ablation.sh` — independent-policies ablation (`--independent`: one network per agent
+  instead of shared weights). Answers the main threat to validity. Dirs suffixed `_indep`;
+  `aggregate.py` treats them as separate conditions (`selfish_indep`, `cooperative_indep`).
+  ~5h for 2 schemes × 3 seeds.
+  ```bash
+  ./run_ablation.sh
+  python aggregate.py --episodes 30000 --schemes selfish cooperative selfish_indep cooperative_indep
+  ```
+
 ## Analysis
 
 - `aggregate.py` — after a sweep, groups runs by scheme across seeds and reports the
@@ -61,6 +70,11 @@ single-threaded so 4 pack onto the M1's 4 performance cores. All local, no paid 
   ```
   Validated against the frozen results: it reproduces the dissertation's 50k numbers
   exactly (n=1 → p-values n/a until the multi-seed sweep provides ≥2 seeds).
+- `freerider.py` — non-circular free-riding metrics (free-rider fraction, contribution Gini)
+  with Welch tests. No training needed — runs on existing data. Writes `../results/freerider.md`.
+  ```bash
+  python freerider.py --episodes 30000
+  ```
 - `plot_curves.py` — multi-seed learning curves with ±1 s.d. bands (paper Figure 2).
   Streams the per-seed CSVs, computes per-episode efficiency & Jain fairness, averages
   across seeds. Writes `../results/figures/learning_curves.png`.
