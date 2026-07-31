@@ -108,7 +108,11 @@ def run_episode(
                 agent_obs = obs[agent_id]
                 flat_obs = agent_obs if agent_obs.ndim == 1 else agent_obs.flatten()
 
-                action, log_prob, value = ppo_agent.select_action(flat_obs)
+                # independent-policy mode dispatches per agent; shared mode ignores agent_id
+                if getattr(ppo_agent, "is_multi", False):
+                    action, log_prob, value = ppo_agent.select_action(flat_obs, agent_id)
+                else:
+                    action, log_prob, value = ppo_agent.select_action(flat_obs)
 
                 actions[agent_id] = int(action)
                 step_log_probs[agent_id] = float(log_prob)
@@ -143,7 +147,7 @@ def run_episode(
                 # store ONLY genuine termination as done. Truncation (step limit) is
                 # not terminal for bootstrapping, so it must not zero the GAE tail.
                 done = bool(terminations[agent_id])
-                ppo_agent.store_transition(
+                store_kwargs = dict(
                     obs=step_flat_obs[agent_id],
                     action=actions[agent_id],
                     log_prob=step_log_probs[agent_id],
@@ -152,6 +156,10 @@ def run_episode(
                     value=step_values[agent_id],
                     trajectory_id=agent_id,
                 )
+                if getattr(ppo_agent, "is_multi", False):
+                    ppo_agent.store_transition(agent_id=agent_id, **store_kwargs)
+                else:
+                    ppo_agent.store_transition(**store_kwargs)
 
         # --- update communication if enabled ---
         if comm_layer is not None:
@@ -201,7 +209,11 @@ def run_episode(
             for agent_id in env.agents:
                 final_obs = obs[agent_id]
                 final_flat = final_obs if final_obs.ndim == 1 else final_obs.flatten()
-                last_value[agent_id] = ppo_agent.get_value(final_flat)
+                last_value[agent_id] = (
+                    ppo_agent.get_value(final_flat, agent_id)
+                    if getattr(ppo_agent, "is_multi", False)
+                    else ppo_agent.get_value(final_flat)
+                )
             last_done = False
 
         try:
