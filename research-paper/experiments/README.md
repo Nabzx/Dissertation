@@ -59,6 +59,15 @@ single-threaded so 4 pack onto the M1's 4 performance cores. All local, no paid 
   python aggregate.py --episodes 30000 --schemes selfish cooperative selfish_indep cooperative_indep
   ```
 
+- `run_density.sh` — resource-density sweep: does the effect generalise beyond 25 resources?
+  Runs selfish/cooperative at other densities; dirs carry an `_r<N>` suffix (omitted at the
+  default 25, so the main sweep serves as the mid-point). Efficiency is normalised by each
+  run's own resource count, so densities are comparable.
+  ```bash
+  DRYRUN=1 ./run_density.sh
+  ./run_density.sh                      # 15 & 40 resources × 2 schemes × 3 seeds (~6.5h)
+  ```
+
 ## Analysis
 
 - `aggregate.py` — after a sweep, groups runs by scheme across seeds and reports the
