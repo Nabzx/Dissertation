@@ -65,9 +65,13 @@ def last_n_metrics(run_dir: Path, n: int = 100) -> Dict[str, float]:
 
 
 def discover(root: Path, episodes: int, scheme: str) -> List[Path]:
+    # "<scheme>_indep" selects the independent-policy ablation runs, which carry an
+    # _indep suffix; a plain scheme name matches only the shared-weight runs.
+    base, want_indep = (scheme[:-6], True) if scheme.endswith("_indep") else (scheme, False)
+    suffix = "_indep" if want_indep else ""
     out = []
-    for d in sorted(root.glob(f"run_{episodes}_{scheme}_seed*")):
-        if re.match(rf"run_{episodes}_{scheme}_seed\d+(_(plus_own|team_avg))?$", d.name) \
+    for d in sorted(root.glob(f"run_{episodes}_{base}_seed*")):
+        if re.match(rf"run_{episodes}_{base}_seed\d+(_(plus_own|team_avg))?{suffix}$", d.name) \
            and (d / "headless_training_metrics.csv").is_file():
             out.append(d)
     return out
