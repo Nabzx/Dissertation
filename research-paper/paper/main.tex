@@ -38,9 +38,14 @@ incentive ($p<0.001$, Cohen's $d = 4$--$6$ for selfish vs.\ cooperative). Sweepi
 reveals why: performance is a saturating increasing function of individual-incentive weight,
 rising steeply as soon as an agent's own contribution accounts for even a quarter of its
 signal, then plateauing. The harm is therefore specific to \emph{pure} team-average reward,
-which makes free-riding individually rational and maximises the credit-assignment problem.
-Fair, efficient coordination emerges not from a cooperative objective but as a side effect
-of individual self-interest.
+which makes free-riding individually rational and maximises the credit-assignment problem;
+a free-riding index computed independently of our performance metrics confirms this mechanism
+directly. Finally, we show the effect is \emph{understated} by a common implementation choice:
+replacing the shared policy with four independent learners leaves selfish agents unchanged
+but causes the cooperative condition to collapse further still (efficiency $0.502\to0.169$),
+because parameter sharing partially conceals the credit-assignment failure. Fair, efficient
+coordination emerges not from a cooperative objective but as a side effect of individual
+self-interest.
 \end{abstract}
 
 \keywords{Multi-agent reinforcement learning, emergent cooperation, reward shaping,
@@ -75,7 +80,12 @@ seeds with very large effect sizes, and a sweep of the mixing weight explains th
   reward on efficiency, fairness and coordination (Sec.~\ref{sec:results}).
   \item An $\alpha$-sweep that turns three discrete conditions into a dose--response curve and
   localises a ``knee'' near $\alpha\approx0.25$, showing the harm is specific to pure
-  team-average reward and identifying the mechanism as credit assignment / free-riding.
+  team-average reward and identifying the mechanism as credit assignment / free-riding,
+  corroborated by a free-riding index that is independent of our performance metrics.
+  \item An architecture ablation showing that \emph{parameter sharing masks the pathology}:
+  with four independent learners the cooperative condition collapses far further
+  (efficiency $0.502\to0.169$) while selfish is unaffected. MARL studies that share
+  parameters may systematically understate the harm of purely cooperative reward.
 \end{itemize}
 
 \section{Related Work}
@@ -151,7 +161,8 @@ team-average form for the cooperative condition, matching Eq.~\eqref{eq:reward} 
 \section{Experimental Setup}
 \label{sec:setup}
 We train each condition for $30{,}000$ episodes on CPU, repeated over $5$ random seeds
-(the $\alpha$-sweep uses $3$ seeds). We report four metrics over the final $100$ episodes:
+(the $\alpha$-sweep and the architecture ablation use $3$ seeds). A single master seed
+controls Python, NumPy and PyTorch weight initialisation, so conditions differ only in reward. We report four metrics over the final $100$ episodes:
 mean total reward; \emph{efficiency} (resources collected $/$ resources spawned);
 \emph{Jain fairness}~\cite{jain1984fairness} over per-agent collection counts; and a
 \emph{cooperation score} defined as efficiency $\times$ fairness. Because that score is by
@@ -247,6 +258,54 @@ Contribution Gini   & \textbf{0.331 $\pm$ 0.012} & 0.384 $\pm$ 0.005 & 0.351 $\p
 \end{tabular}
 \end{table}
 
+\paragraph{Parameter sharing masks the pathology.}
+Our main experiments share one policy across the four agents, a near-ubiquitous convenience in
+MARL. To test whether this drives the result, we repeat the selfish and cooperative conditions
+with \emph{four fully independent learners} (a separate network and optimiser per agent),
+changing nothing else. The outcome, in Fig.~\ref{fig:ablation} and Table~\ref{tab:ablation},
+is asymmetric and striking. Selfish agents are \emph{unaffected}: efficiency
+$0.627\to0.638$ ($p=0.70$, n.s.). The cooperative condition collapses: efficiency
+$0.502\to0.169$, reward $12.56\to4.23$. The selfish--cooperative efficiency gap widens from
+$0.125$ to $0.469$ ($p=0.0004$, $d=14.5$), and the free-rider fraction rises from $0.307$ to
+$0.418$ ($p<0.05$, $d=3.4$).
+
+The explanation follows from the credit-assignment account. With a shared policy, all four
+agents' transitions update one network, so even under team-average reward that network still
+observes that collecting produces reward --- a single policy cannot free-ride on itself.
+Give each agent its own parameters and the team-average signal becomes nearly uncorrelated
+with that agent's own actions; free-riding becomes individually learnable, and the system
+degrades toward passivity. Indeed the independent cooperative agents finish \emph{below} the
+near-random return of early training, i.e.\ they have learned to do less than a random policy.
+The practical implication is that parameter sharing partially conceals this failure mode:
+studies that share parameters may systematically \emph{understate} how harmful a purely
+cooperative reward is.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figures/ablation.png}
+\caption{Removing parameter sharing. Selfish (red) is unchanged; cooperative (blue) collapses.
+Error bars are 1 s.d.\ across seeds.}
+\label{fig:ablation}
+\end{figure}
+
+\begin{table}[t]
+\caption{Shared-weight vs.\ independent learners (mean $\pm$ s.d.). Selfish is unaffected;
+cooperative collapses.}
+\label{tab:ablation}
+\begin{tabular}{lcccc}
+\toprule
+& \multicolumn{2}{c}{Selfish} & \multicolumn{2}{c}{Cooperative} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}
+Metric & shared & indep. & shared & indep. \\
+\midrule
+Efficiency    & 0.627 & 0.638 & 0.502 & \textbf{0.169} \\
+Jain fairness & 0.716 & 0.690 & 0.656 & \textbf{0.496} \\
+Cooperation   & 0.455 & 0.450 & 0.338 & \textbf{0.097} \\
+Free-rider frac. & 0.251 & 0.278 & 0.307 & \textbf{0.418} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
 \paragraph{Qualitative behaviour.}
 Under selfish reward, agents develop distinct spatial territories (Fig.~\ref{fig:qual}); this
 is not motivated by fairness but is the individually rational response to competition, and it
@@ -274,20 +333,22 @@ this environment, is best understood as an accidental by-product of self-interes
 a behaviour that a cooperative objective reliably induces.
 
 \paragraph{Threats to validity.} We study one environment configuration, so generalisation
-across resource densities and agent counts remains open. Our main experiments use a
-shared-weight learner, meaning the ``agents'' are one policy generalising over four starting
-positions rather than four independently parameterised strategies; we address this with an
-independent-policy ablation (Sec.~\ref{sec:results}).\footnote{Ablation results to be inserted
-once the independent-policy runs complete.} The cooperation score is not independent of
-efficiency and fairness, which is why we also report the free-rider fraction and contribution
-Gini. We use $5$ seeds ($3$ for the sweep and ablation). Whether the effect holds under a
-centralised critic is future work; we expect the credit-assignment mechanism to persist but
-its magnitude to depend on these factors.
+across resource densities and agent counts remains open. The shared-weight concern is
+addressed directly by our ablation, which shows the effect strengthens rather than
+disappears without parameter sharing. The cooperation score is not independent of efficiency
+and fairness, which is why we also report the free-rider fraction and contribution Gini.
+We use $5$ seeds ($3$ for the $\alpha$-sweep and the ablation); the ablation's effect sizes
+($d>9$ on every metric) are large enough that this is not a practical concern. The most
+important open question is whether a centralised critic~\cite{yu2022mappo,foerster2018coma},
+designed precisely to solve credit assignment, repairs the cooperative condition. Our account
+predicts it should substantially help, which would make the failure mode a property of naive
+independent learners rather than of cooperative reward as such.
 
 \section{Conclusion}
 Rewarding agents for collective success does not reliably produce cooperation; in our
 controlled study it does the opposite, significantly harming fairness, efficiency and
-coordination relative to reward schemes that preserve individual incentive. An $\alpha$-sweep
+coordination relative to reward schemes that preserve individual incentive, and it does so
+more severely once the convenience of parameter sharing is removed. An $\alpha$-sweep
 localises the harm to pure team-average reward and identifies credit assignment as the cause.
 The most promising next steps are a centralised-critic baseline and generalisation across agent
 counts and resource densities.
