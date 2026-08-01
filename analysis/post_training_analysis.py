@@ -11,7 +11,9 @@ import numpy as np
 MAX_RESOURCES = 25  # used to normalise efficiency
 
 
-def run_post_training_analysis(run_name: str) -> None:
+def run_post_training_analysis(run_name: str, max_resources: int = MAX_RESOURCES) -> None:
+    # max_resources normalises efficiency; it must match the run's num_resources or the
+    # efficiency metric is wrong (defaults to 25, the standard configuration).
     out_dir = Path("results") / run_name
     plot_dir = out_dir / "plots"
     plot_dir.mkdir(parents=True, exist_ok=True)  
@@ -21,8 +23,8 @@ def run_post_training_analysis(run_name: str) -> None:
     final_eps = _load_json(out_dir / "final_episodes.json")  
     # load training + final eval data
 
-    curves = _build_curves(rows)
-    final_stats = _build_final_stats(final_eps)
+    curves = _build_curves(rows, max_resources)
+    final_stats = _build_final_stats(final_eps, max_resources)
 
     # generate plots for different metrics
     _plot_curve(curves["episodes"], curves["rewards"], "Reward", "Reward", plot_dir / "reward_curve.png")
@@ -53,7 +55,7 @@ def _load_json(path: Path) -> List[Dict]:
         return json.load(f)
 
 
-def _build_curves(rows: List[Dict]) -> Dict[str, List[float]]:
+def _build_curves(rows: List[Dict], max_resources: int = MAX_RESOURCES) -> Dict[str, List[float]]:
     episodes = []
     rewards = []
     efficiency = []
@@ -66,7 +68,7 @@ def _build_curves(rows: List[Dict]) -> Dict[str, List[float]]:
         # resources per agent
 
         total_res = float(row.get("total_resources", sum(counts)))
-        eff = total_res / max(1, MAX_RESOURCES)  
+        eff = total_res / max(1, max_resources)
         # normalised efficiency
 
         fair = _jain_index(counts)  
@@ -88,7 +90,7 @@ def _build_curves(rows: List[Dict]) -> Dict[str, List[float]]:
     }
 
 
-def _build_final_stats(final_eps: List[Dict]) -> Dict[str, float]:
+def _build_final_stats(final_eps: List[Dict], max_resources: int = MAX_RESOURCES) -> Dict[str, float]:
     rewards = []
     resources = []
     efficiency = []
@@ -100,7 +102,7 @@ def _build_final_stats(final_eps: List[Dict]) -> Dict[str, float]:
         counts = [float(value) for value in res.values()]
 
         total_res = float(sum(counts))
-        eff = total_res / max(1, MAX_RESOURCES)
+        eff = total_res / max(1, max_resources)
         fair = _jain_index(counts)
 
         rewards.append(float(ep.get("total_reward", 0.0)))
