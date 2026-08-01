@@ -50,12 +50,14 @@ def moving_average(y: np.ndarray, w: int) -> np.ndarray:
     return out
 
 
-def load_seed_series(run_dir: Path) -> Dict[str, np.ndarray]:
+def load_seed_series(run_dir: Path, max_res: int = MAX_RES) -> Dict[str, np.ndarray]:
+    # max_res must match the run's num_resources (see the _r<N> suffix on density runs),
+    # otherwise efficiency is normalised against the wrong denominator.
     eff, fair, rew, coop = [], [], [], []
     with open(run_dir / "headless_training_metrics.csv") as f:
         for row in csv.DictReader(f):
             total = float(row["total_resources"])
-            e = total / MAX_RES
+            e = total / max_res
             counts = [float(v) for v in json.loads(row["resources_collected_json"]).values()]
             fr = jain(counts)
             eff.append(e)
