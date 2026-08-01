@@ -356,4 +356,59 @@ counts and resource densities.
 \bibliographystyle{ACM-Reference-Format}
 \bibliography{references}
 
+\appendix
+
+\section{Reproducibility}
+\label{app:repro}
+
+\paragraph{Code and data.} All code, run configurations and analysis scripts are released with
+the paper. Every number reported traces to a logged run: each run writes a per-episode CSV, a
+per-episode JSON metric log, and a \texttt{summary.json} of the final-100-episode statistics.
+The aggregation, significance testing and every figure are regenerated from those files by the
+released scripts, with no manual transcription.
+
+\paragraph{Environment configuration.} $25\times25$ grid with an octagonal playable mask;
+$N=4$ agents; $25$ resource nodes; $45$ static obstacles; resource respawn probability
+$0.02$ per depleted node per step; $5\times5$ egocentric observation window (flattened to
+$25$ integers); $5$ discrete actions (stay, up, down, left, right); episode limit $250$ steps
+(truncation) or resource exhaustion (termination). Obstacle, resource and agent placements are
+randomised per episode from the episode seed.
+
+\paragraph{PPO hyperparameters.} $\gamma=0.99$; GAE $\lambda=0.95$; clip ratio $0.2$;
+Adam learning rate $3\times10^{-4}$; $4$ epochs per update; minibatch size $64$; value loss
+coefficient $0.5$; entropy coefficient $0.01$; gradient-norm clip $0.5$. Policy/value network:
+shared two-layer MLP ($64$ units, ReLU) with separate linear policy ($\rightarrow 5$) and value
+($\rightarrow 1$) heads. Updates occur at the end of each episode from a buffer holding all
+four agents' transitions, with advantages computed per agent trajectory. On truncation the
+value target bootstraps from $V(s_T)$; only genuine termination is treated as terminal.
+
+\paragraph{Seeding.} A single master seed sets Python's \texttt{random}, NumPy and PyTorch
+weight initialisation. Episode seeds are drawn from a disjoint per-seed stream
+($\text{seed}\times N_{\text{episodes}} + \text{episode}$) so that no two runs share an episode
+sequence. Main conditions use seeds $0$--$4$; the $\alpha$-sweep and the architecture ablation
+use seeds $0$--$2$.
+
+\paragraph{Compute.} All experiments run on CPU on a single Apple M1 laptop (4 performance
+cores), with no GPU. Runs are executed single-threaded, four concurrently. A $30{,}000$-episode
+shared-weight run takes roughly $2.5$ hours; independent-learner runs are slower (four networks
+per update). The full set reported here --- $15$ main runs, $15$ $\alpha$-sweep runs and $6$
+ablation runs --- totals under $30$ hours of wall-clock time. No paid or cloud compute was used.
+
+\paragraph{Software.} Python 3.14, PyTorch 2.11, NumPy 2.4, PettingZoo 1.24 (the environment
+implements the \texttt{ParallelEnv} API). PPO is implemented from scratch rather than taken
+from an RL library, so that trajectory buffering and per-agent advantage computation are fully
+specified by the released code.
+
+\paragraph{Metric definitions.} Efficiency is total resources collected divided by resources
+spawned ($25$). Jain fairness~\cite{jain1984fairness} is computed over the four per-agent
+collection counts of an episode. The cooperation score is their product. The free-rider
+fraction is the mean fraction of agents whose collection falls below half the per-episode
+per-agent mean; the contribution Gini is the Gini coefficient of the per-agent counts. All
+are averaged over the final $100$ episodes of a run, then aggregated across seeds.
+
+\paragraph{Statistics.} Group comparisons use two-sided Welch $t$-tests on per-seed
+final-100-episode means (i.e.\ $n$ equals the number of seeds, not episodes), with Cohen's $d$
+computed from the pooled standard deviation. We report exact $p$-values and effect sizes rather
+than significance thresholds alone.
+
 \end{document}
