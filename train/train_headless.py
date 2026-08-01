@@ -76,7 +76,13 @@ def train_headless(
     else:
         reward_tag = ""
     arch_tag = "_indep" if independent else ""  # keep the ablation separate from shared-weight runs
-    run_name = f"run_{num_episodes}_{reward_scheme}_seed{seed}{reward_tag}{arch_tag}"
+    # resource density is part of the identity too, otherwise a density sweep would write
+    # every density into the same directory. Guarded on the default (25) so all existing
+    # run names are unchanged.
+    density_tag = f"_r{num_resources}" if num_resources != 25 else ""
+    run_name = (
+        f"run_{num_episodes}_{reward_scheme}_seed{seed}{reward_tag}{arch_tag}{density_tag}"
+    )
 
     # adjust default paths to include run_name
     if checkpoint_dir == "checkpoints":
@@ -245,7 +251,8 @@ def train_headless(
 
     # --- run post-training analysis automatically ---
     from analysis.post_training_analysis import run_post_training_analysis
-    run_post_training_analysis(run_name)
+    # pass this run's resource count so efficiency is normalised correctly under a density sweep
+    run_post_training_analysis(run_name, max_resources=num_resources)
 
     return metrics
 
