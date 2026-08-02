@@ -119,8 +119,10 @@ reward transformation differs across conditions.
 \section{Environment}
 \label{sec:env}
 The environment is a $25\times25$ discrete grid masked to an octagonal arena (to avoid corner
-bias). It hosts $N=4$ agents, $25$ resource nodes that respawn probabilistically ($2\%$ per
-depleted node per step), and $45$ static obstacles. Each agent observes only a $5\times5$
+bias). It hosts $N=4$ agents, $25$ resource nodes, and $45$ static obstacles. Resources
+regenerate slowly: at each step, with probability $0.02$, one resource respawns at a random
+free cell, subject to a cap at the initial resource count. Over a $250$-step episode this adds
+roughly five resources, so the environment never becomes static but scarcity is preserved. Each agent observes only a $5\times5$
 local window centred on itself, flattened to a $25$-dimensional integer vector; it never
 observes the global state. Actions are the five moves \{stay, up, down, left, right\};
 collisions with walls, obstacles and other agents leave the agent in place. Episodes run for
@@ -199,9 +201,11 @@ Table~\ref{tab:main} shows the headline result. Selfish reward beats cooperative
 every metric, with very large effect sizes: efficiency ($p=0.0002$, $d=4.2$), fairness
 ($p=0.0001$, $d=6.2$) and cooperation ($p=0.0002$, $d=5.1$). The cooperative condition is also
 significantly worse than mixed ($p<0.05$ on all three metrics). By contrast, selfish and mixed
-are statistically close (efficiency $p=0.12$, cooperation $p=0.06$; both n.s.). The defensible
-claim is therefore $\{\text{selfish},\text{mixed}\} \gg \text{cooperative}$, rather than a
-strict three-way ordering.
+are statistically close (efficiency $p=0.12$, cooperation $p=0.06$; both n.s., and fairness
+also non-significant once corrected for multiple comparisons). The defensible claim is
+therefore $\{\text{selfish},\text{mixed}\} \gg \text{cooperative}$, rather than a strict
+three-way ordering. All conclusions in this paragraph survive Holm--Bonferroni correction
+across the nine-test family (Appendix~\ref{app:repro}).
 
 \paragraph{Learning dynamics.}
 Figure~\ref{fig:curves} shows why the averages differ. Selfish and mixed recover quickly to a
@@ -315,7 +319,11 @@ To test whether our finding is specific to one level of competition, we repeat t
 cooperative conditions at $15$ and $40$ resources (vs.\ the default $25$), normalising
 efficiency by each run's own resource count. Figure~\ref{fig:density} shows the outcome.
 Selfish agents are remarkably insensitive to scarcity, collecting a near-constant proportion
-of what is available ($0.619 \to 0.648$ efficiency across a $2.7\times$ change in resources).
+of the initial resource pool ($0.619 \to 0.648$ efficiency across a $2.7\times$ change in
+resources).\footnote{Because respawn contributes a roughly fixed number of additional
+resources per episode regardless of density, absolute efficiency values are not perfectly
+comparable across densities. The selfish--cooperative \emph{gap} at a given density is
+unaffected, since both conditions share the same denominator; our claims concern those gaps.}
 Cooperative agents are fragile: efficiency nearly doubles from scarce to abundant
 ($0.297 \to 0.570$). Consequently the selfish--cooperative gap falls monotonically as
 resources become plentiful --- efficiency $+0.322 \to +0.125 \to +0.078$, and the fairness gap
@@ -405,7 +413,8 @@ released scripts, with no manual transcription.
 
 \paragraph{Environment configuration.} $25\times25$ grid with an octagonal playable mask;
 $N=4$ agents; $25$ resource nodes; $45$ static obstacles; resource respawn probability
-$0.02$ per depleted node per step; $5\times5$ egocentric observation window (flattened to
+$0.02$ per step (a single respawn attempt per step, capped at the initial resource count);
+$5\times5$ egocentric observation window (flattened to
 $25$ integers); $5$ discrete actions (stay, up, down, left, right); episode limit $250$ steps
 (truncation) or resource exhaustion (termination). Obstacle, resource and agent placements are
 randomised per episode from the episode seed.
@@ -445,6 +454,12 @@ are averaged over the final $100$ episodes of a run, then aggregated across seed
 \paragraph{Statistics.} Group comparisons use two-sided Welch $t$-tests on per-seed
 final-100-episode means (i.e.\ $n$ equals the number of seeds, not episodes), with Cohen's $d$
 computed from the pooled standard deviation. We report exact $p$-values and effect sizes rather
-than significance thresholds alone.
+than significance thresholds alone. Because the main comparison involves nine tests (three
+metrics $\times$ three condition pairs), we additionally apply a Holm--Bonferroni correction to
+that family. All selfish-vs-cooperative comparisons remain significant
+($p_{\text{adj}}\le0.0016$), as do all cooperative-vs-mixed comparisons
+($p_{\text{adj}}\le0.0444$); every selfish-vs-mixed comparison is non-significant after
+correction. The correction therefore supports exactly the claim we make in
+Sec.~\ref{sec:results}, and we report uncorrected values in the main text for transparency.
 
 \end{document}
