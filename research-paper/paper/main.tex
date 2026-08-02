@@ -43,9 +43,10 @@ a free-riding index computed independently of our performance metrics confirms t
 directly. Finally, we show the effect is \emph{understated} by a common implementation choice:
 replacing the shared policy with four independent learners leaves selfish agents unchanged
 but causes the cooperative condition to collapse further still (efficiency $0.502\to0.169$),
-because parameter sharing partially conceals the credit-assignment failure. Fair, efficient
-coordination emerges not from a cooperative objective but as a side effect of individual
-self-interest.
+because parameter sharing partially conceals the credit-assignment failure. Varying resource
+density shows the effect is significant throughout but scales with competition: it is largest
+under scarcity and nearly vanishes under abundance. Fair, efficient coordination emerges not
+from a cooperative objective but as a side effect of individual self-interest.
 \end{abstract}
 
 \keywords{Multi-agent reinforcement learning, emergent cooperation, reward shaping,
@@ -86,6 +87,9 @@ seeds with very large effect sizes, and a sweep of the mixing weight explains th
   with four independent learners the cooperative condition collapses far further
   (efficiency $0.502\to0.169$) while selfish is unaffected. MARL studies that share
   parameters may systematically understate the harm of purely cooperative reward.
+  \item A resource-density sweep establishing a boundary condition: the effect holds at every
+  density tested but scales with competition, being largest under scarcity and negligible
+  under abundance.
 \end{itemize}
 
 \section{Related Work}
@@ -306,6 +310,35 @@ Free-rider frac. & 0.251 & 0.278 & 0.307 & \textbf{0.418} \\
 \end{tabular}
 \end{table}
 
+\paragraph{The effect is modulated by scarcity.}
+To test whether our finding is specific to one level of competition, we repeat the selfish and
+cooperative conditions at $15$ and $40$ resources (vs.\ the default $25$), normalising
+efficiency by each run's own resource count. Figure~\ref{fig:density} shows the outcome.
+Selfish agents are remarkably insensitive to scarcity, collecting a near-constant proportion
+of what is available ($0.619 \to 0.648$ efficiency across a $2.7\times$ change in resources).
+Cooperative agents are fragile: efficiency nearly doubles from scarce to abundant
+($0.297 \to 0.570$). Consequently the selfish--cooperative gap falls monotonically as
+resources become plentiful --- efficiency $+0.322 \to +0.125 \to +0.078$, and the fairness gap
+all but disappears under abundance ($+0.127 \to +0.060 \to +0.009$). The difference remains
+statistically significant at every density tested ($p=0.0012$, $0.0002$, $0.0187$
+respectively), so the result generalises; what changes is its magnitude.
+
+This is precisely what a social-dilemma account predicts. Scarcity is what gives free-riding
+its cost: when resources are abundant there is enough for everyone regardless of how work is
+distributed, so a passive agent barely harms the group. As resources contract, the same
+free-riding becomes ruinous. Our finding is therefore not a universal claim but one with a
+stated boundary condition: \emph{team-average reward is largely benign under abundance and
+increasingly harmful under competition}.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figures/density.png}
+\caption{Resource-density sweep. Left: selfish efficiency (red) is near-constant while
+cooperative (blue) degrades sharply under scarcity; shaded $=\pm1$ s.d. Right: the
+selfish-minus-cooperative gap shrinks monotonically as resources become abundant.}
+\label{fig:density}
+\end{figure}
+
 \paragraph{Qualitative behaviour.}
 Under selfish reward, agents develop distinct spatial territories (Fig.~\ref{fig:qual}); this
 is not motivated by fairness but is the individually rational response to competition, and it
@@ -332,12 +365,15 @@ contrast, makes inaction immediately costly, and the individually rational strat
 this environment, is best understood as an accidental by-product of self-interest rather than
 a behaviour that a cooperative objective reliably induces.
 
-\paragraph{Threats to validity.} We study one environment configuration, so generalisation
-across resource densities and agent counts remains open. The shared-weight concern is
-addressed directly by our ablation, which shows the effect strengthens rather than
-disappears without parameter sharing. The cooperation score is not independent of efficiency
-and fairness, which is why we also report the free-rider fraction and contribution Gini.
-We use $5$ seeds ($3$ for the $\alpha$-sweep and the ablation); the ablation's effect sizes
+\paragraph{Threats to validity.} The shared-weight concern is addressed directly by our
+ablation, which shows the effect strengthens rather than disappears without parameter
+sharing, and the single-configuration concern by the density sweep, which finds the effect at
+every density tested. Generalisation across agent counts remains open: our environment
+encodes agents as distinct cell values and so caps at four, and whether the effect grows with
+team size (as the credit-assignment account would predict, since each agent's contribution to
+the team average shrinks as $1/N$) is untested. The cooperation score is not independent of
+efficiency and fairness, which is why we also report the free-rider fraction and contribution
+Gini. We use $5$ seeds ($3$ for the $\alpha$-sweep, ablation and density runs); the ablation's effect sizes
 ($d>9$ on every metric) are large enough that this is not a practical concern. The most
 important open question is whether a centralised critic~\cite{yu2022mappo,foerster2018coma},
 designed precisely to solve credit assignment, repairs the cooperative condition. Our account
