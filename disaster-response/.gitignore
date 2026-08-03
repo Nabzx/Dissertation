@@ -1,6 +1,9 @@
 # Training outputs (checkpoints, metrics, launch logs) — regenerable, never committed.
 runs/
 
-# figures/ IS tracked: it holds curated figures for the paper write-up.
+# The root .gitignore ignores any dir named results/ or figures/. Re-include ours: these hold
+# curated, hand-picked artifacts for the paper write-up, not regenerable run output.
 !figures/
 !figures/**
+!results/
+!results/**
