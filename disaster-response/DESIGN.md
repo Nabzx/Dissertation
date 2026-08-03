@@ -55,10 +55,20 @@ which cannot express severity, urgency or agency membership. Here each agent see
 
 Cleaner, extensible, and it removes the value-collision problem entirely.
 
-### 4. Agencies
-`num_agents` responders partitioned into `num_agencies` groups. α is applied *within agency*:
-an agency's reward blends its own rescues with the global total. With `num_agencies = num_agents`
-this reduces to the fully individual case; with `num_agencies = 1` to the fully collective one.
+### 4. Agencies — the credited unit
+`num_agents` responders partitioned into `num_agencies` groups. The mandate credits the
+**agency**, not the individual:
+
+    r_i = α · mean(raw over agent i's agency) + (1 − α) · mean(raw over all agents)
+
+α=1 credits each agency only for what it rescues itself; α=0 credits everyone with the
+collective outcome. Setting `num_agencies = num_agents` recovers the purely individual case,
+so this generalises the gridworld paper's formulation rather than replacing it.
+(`--credit agent` keeps the older individual-vs-collective form for comparison.)
+
+This matters: with per-*agent* credit the agency structure would be decorative, and Phase 4
+(information withholding between agencies) would be impossible — an agent has no reason to
+favour its own agency if it is not rewarded per agency.
 
 ### 5. Action space
 `{stay, up, down, left, right, rescue}` — 6 actions. `rescue` only has effect when co-located
