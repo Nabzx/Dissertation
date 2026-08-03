@@ -45,6 +45,9 @@ class IndependentPPO:
     def select_action(self, obs: np.ndarray, agent_id: str) -> Tuple[int, float, float]:
         return self.policies[agent_id].select_action(obs)
 
+    def select_action_greedy(self, obs: np.ndarray, agent_id: str) -> int:
+        return self.policies[agent_id].select_action_greedy(obs)
+
     def get_value(self, obs: np.ndarray, agent_id: str) -> float:
         return self.policies[agent_id].get_value(obs)
 
