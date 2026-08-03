@@ -139,6 +139,7 @@ class DisasterEnv(ParallelEnv):
         self.lives_saved = self.lives_lost = 0
         self.severe_saved = self.minor_saved = 0
         self.severe_lost = self.minor_lost = 0
+        self.severe_total = self.minor_total = 0
         self.joint_rescues = 0
 
         if seed is not None:
@@ -188,6 +189,7 @@ class DisasterEnv(ParallelEnv):
         self.lives_saved = self.lives_lost = 0
         self.severe_saved = self.minor_saved = 0
         self.severe_lost = self.minor_lost = 0
+        self.severe_total = self.minor_total = 0
         self.joint_rescues = 0
 
         if self.layout == "village":
@@ -218,6 +220,10 @@ class DisasterEnv(ParallelEnv):
             sev = 2 if rng.random() < self.severe_fraction else 1
             ttl = int(rng.integers(self.ttl_range[0], self.ttl_range[1] + 1))
             self.victims.append(Victim(pos[0], pos[1], sev, ttl, indoors=pos in self.interior))
+            if sev == 2:
+                self.severe_total += 1
+            else:
+                self.minor_total += 1
 
         start_pool = [p for p in (outdoor or region) if p not in occupied]
         for a in self.agents:
@@ -371,8 +377,11 @@ class DisasterEnv(ParallelEnv):
     # ---------- reporting ----------
     def get_metrics(self) -> Dict:
         total = self.lives_saved + self.lives_lost + len(self.victims)
-        sev_total = self.severe_saved + self.severe_lost
-        min_total = self.minor_saved + self.minor_lost
+        # denominator is every victim of that severity that was spawned - including any still
+        # alive at truncation. Counting only resolved victims silently inflates the rate,
+        # because unreached-but-not-yet-dead victims would be excluded entirely.
+        sev_total = self.severe_total
+        min_total = self.minor_total
         return {
             "lives_saved": self.lives_saved,
             "lives_lost": self.lives_lost,
