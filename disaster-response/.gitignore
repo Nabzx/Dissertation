@@ -1,0 +1,6 @@
+# Training outputs (checkpoints, metrics, launch logs) — regenerable, never committed.
+runs/
+
+# figures/ IS tracked: it holds curated figures for the paper write-up.
+!figures/
+!figures/**
