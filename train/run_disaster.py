@@ -11,7 +11,7 @@ from typing import Dict, List, Optional
 import numpy as np
 
 from env.disaster_env import DisasterEnv
-from env.rewards import mixed_rewards
+from env.disaster_rewards import mandate_rewards
 
 
 def flatten_obs(obs: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
@@ -27,6 +27,8 @@ def run_disaster_episode(
     episode_seed: Optional[int] = None,
     render_dir: Optional[str] = None,
     render_every: int = 0,
+    credit: str = "agency",
+    deterministic: bool = False,
 ) -> Dict:
     seed = episode_seed if episode_seed is not None else episode_num
     raw_obs, _ = env.reset(seed=seed)
@@ -51,7 +53,11 @@ def run_disaster_episode(
         for a in env.agents:
             flat = obs[a]
             if learning:
-                if multi:
+                if deterministic:
+                    act = (policy.select_action_greedy(flat, a) if multi
+                           else policy.select_action_greedy(flat))
+                    lp, val = 0.0, 0.0
+                elif multi:
                     act, lp, val = policy.select_action(flat, a)
                 else:
                     act, lp, val = policy.select_action(flat)
@@ -64,8 +70,8 @@ def run_disaster_episode(
 
         raw_next, raw_rewards, terminations, truncations, _ = env.step(actions)
 
-        # the mandate: alpha*own + (1-alpha)*team average
-        shaped = mixed_rewards(raw_rewards, alpha)
+        # the mandate: alpha * (own agency's mean) + (1-alpha) * (collective mean)
+        shaped = mandate_rewards(raw_rewards, env.agency_of, alpha, credit=credit)
 
         if learning and train_policy:
             for a in env.agents:
