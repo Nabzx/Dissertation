@@ -37,6 +37,7 @@ except ImportError:                                    # graceful fallback
 from env.disaster_env import DisasterEnv, N_ACTIONS
 from agents.ppo_agent import PPOAgent, TORCH_AVAILABLE, set_global_seeds
 from agents.disaster_baselines import RandomPolicy, GreedyPolicy
+from agents.disaster_coordinated import CoordinatedGreedyPolicy
 from train.run_disaster import run_disaster_episode
 
 CSV_FIELDS = [
@@ -72,7 +73,7 @@ def _row(m: Dict) -> Dict:
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--policy", default="ppo", choices=["ppo", "random", "greedy"])
+    ap.add_argument("--policy", default="ppo", choices=["ppo", "random", "greedy", "coordinated"])
     ap.add_argument("--episodes", type=int, default=8000)
     ap.add_argument("--alpha", type=float, default=1.0,
                     help="mandate: r = alpha*own + (1-alpha)*team_avg")
@@ -93,6 +94,10 @@ def main():
     ap.add_argument("--layout", default="village", choices=["village", "open"])
     ap.add_argument("--checkpoint-every", type=int, default=2000)
     ap.add_argument("--out-root", default="disaster-response/runs")
+    ap.add_argument("--credit", default="agency", choices=["agency", "agent"],
+                    help="agency: alpha weights the agency mean; agent: weights own reward")
+    ap.add_argument("--eval-episodes", type=int, default=100,
+                    help="deterministic evaluation episodes on held-out seeds after training")
     ap.add_argument("--tag", default="")
     args = ap.parse_args()
 
@@ -136,6 +141,8 @@ def main():
             policy = PPOAgent(obs_dim=obs_dim, n_actions=N_ACTIONS)
     elif args.policy == "random":
         policy = RandomPolicy(seed=args.seed)
+    elif args.policy == "coordinated":
+        policy = CoordinatedGreedyPolicy(env, seed=args.seed)
     else:
         policy = GreedyPolicy(view_size=args.view_size, seed=args.seed)
 
@@ -163,6 +170,7 @@ def main():
             alpha=args.alpha,
             train_policy=(args.policy == "ppo"),
             episode_seed=args.seed * args.episodes + ep,
+            credit=args.credit,
         )
         row = _row(m)
         rows.append(row)
@@ -199,6 +207,25 @@ def main():
         "mean_joint_rescues": float(np.mean([r["joint_rescues"] for r in tail])),
         "mean_idle_rate": float(np.mean([r["mean_idle_rate"] for r in tail])),
     }
+    # deterministic evaluation on held-out seeds: training metrics carry exploration noise,
+    # so final numbers should not come from the training episodes themselves.
+    if args.eval_episodes > 0:
+        EVAL_BASE = 10_000_000
+        ev: List[Dict] = []
+        for i in range(args.eval_episodes):
+            m = run_disaster_episode(
+                env=env, policy=policy, episode_num=i, alpha=args.alpha,
+                train_policy=False, episode_seed=EVAL_BASE + args.seed * args.eval_episodes + i,
+                credit=args.credit, deterministic=(args.policy == "ppo"),
+            )
+            ev.append(_row(m))
+        summary["eval_episodes"] = len(ev)
+        summary["eval_lives_saved"] = float(np.mean([r["lives_saved"] for r in ev]))
+        summary["eval_save_rate"] = float(np.mean([r["save_rate"] for r in ev]))
+        summary["eval_severe_save_rate"] = float(np.mean([r["severe_save_rate"] for r in ev]))
+        summary["eval_minor_save_rate"] = float(np.mean([r["minor_save_rate"] for r in ev]))
+        summary["eval_joint_rescues"] = float(np.mean([r["joint_rescues"] for r in ev]))
+
     (out_dir / "summary.json").write_text(json.dumps(summary, indent=2))
 
     if args.policy == "ppo":
