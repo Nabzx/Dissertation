@@ -3,16 +3,39 @@
 Running log of choices that affect the paper. Newest first.
 
 ## Open decisions (need Nabil's input)
-- **Reward variant for the paper** (`ISSUES.md` #1): reproduce which of `team_avg+0.1*own`
-  (`plus_own`) vs pure `team_avg` matches the frozen 50k numbers, then standardise. Code now
-  supports both via `--cooperative-variant`; default `plus_own` preserves frozen behaviour.
-  — _pending E1 reproduction run_
-- **Episode budget for multi-seed runs:** keep 50k or drop to 20–30k if plateau is earlier?
-  Depends on wall-clock per run. — _undecided (measure during E1)_
+- **Episode budget for multi-seed runs:** E1 ran fine at 30k; curves plateau well before.
+  Leaning 30k for the sweep (~8h/night). — _confirm_
 - **Second Phase 2 axis:** α-sweep chosen. Optional companion (independent cooperation
   metric vs. generalisation sweep vs. MAPPO baseline) — _undecided_
 
 ## Made
+- 2026-07-30 — **PHASE 2 α-sweep DONE.** Curve: metrics rise steeply α=0→0.25 then plateau
+  (knee ≈0.25) → "a little individual incentive recovers most performance; the harm is
+  specific to pure team-average reward." Endpoints byte-match standalone selfish/cooperative.
+  Evidence: `results/phase2_alpha.{md,json}`, `figures/alpha_sweep.png`. Used 3 seeds.
+- 2026-07-30 — **Figure 2 built** (`plot_curves.py` → `results/figures/learning_curves.png`):
+  5-seed learning curves, ±1 s.d. bands. Cooperative collapses & recovers slowly; selfish/mixed
+  overlap but dominate cooperative — matches the significance tests visually.
+- 2026-07-30 — **α-sweep wired & ready.** `--alpha` plumbed through rewards/run/train; mixed
+  reward now uses configurable α (was hardcoded 0.5); `run_alpha.sh` built. Endpoints verified
+  EXACT: mixed α=1 ≡ selfish, α=0 ≡ cooperative(team_avg). run_name tags mixed dirs with α.
+  Ready to launch (~8h overnight for 5α × 3 seeds).
+- 2026-07-29 — **PHASE 1 DONE. Result is statistically robust (5 seeds).**
+  selfish > cooperative: p<0.001, Cohen's d = 4–6 on efficiency/fairness/cooperation.
+  cooperative < mixed: p<0.05–0.01. selfish vs mixed: small, mostly n.s. Claim to make:
+  *{selfish, mixed} ≫ cooperative*. Evidence saved in `results/phase1_multiseed.{md,json}`.
+- 2026-07-29 — **E1 reproduction PASSED.** Fixed code (30k, seeded, truncation-bootstrapped)
+  reproduces selfish > mixed > cooperative on efficiency (0.655 > 0.631 > 0.531), fairness
+  (0.714 > 0.684 > 0.652) and cooperation (0.478 > 0.437 > 0.351). Ordering holds; gap is
+  sharper than frozen.
+- 2026-07-29 — **Reward variant DECIDED: `team_avg`** (resolves `ISSUES.md` #1). It matches
+  the dissertation eq 2.7, is the α=0 endpoint of the reward spectrum
+  `r_i = α·own + (1−α)·team_avg` (selfish α=1, mixed α=0.5, cooperative α=0), and gives a
+  cleaner/sharper result. `plus_own` is off-spectrum and dropped from the paper.
+  `run_sweep.sh` default set to `team_avg`.
+- 2026-07-29 — **Bug fixed:** `run_name` omitted the cooperative variant, so E1b (team_avg)
+  overwrote E1a (plus_own). run_name now includes the variant tag. plus_own cooperative E1
+  data was lost but is irrelevant (off-spectrum, unused).
 - 2026-07-28 — Created this workspace; agreed nothing outside `research-paper/` is edited.
 - 2026-07-28 — **Fork strategy: git branch `paper`** (main stays frozen).
 - 2026-07-28 — **Phase 2 depth: α-sweep** confirmed as the primary added contribution.

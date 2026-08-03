@@ -22,7 +22,7 @@ EPISODES="${EPISODES:-30000}"
 SEEDS="${SEEDS:-0 1 2 3 4}"
 SCHEMES="${SCHEMES:-selfish cooperative mixed}"
 JOBS="${JOBS:-4}"                 # parallel jobs; M1 has 4 performance cores
-COOP_VARIANT="${COOP_VARIANT:-plus_own}"
+COOP_VARIANT="${COOP_VARIANT:-team_avg}"   # paper's cooperative condition (eq 2.7, alpha=0 endpoint)
 CHECKPOINT_EVERY="${CHECKPOINT_EVERY:-5000}"
 
 # --- paths (script lives in research-paper/experiments/) ---

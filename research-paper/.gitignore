@@ -1,2 +1,7 @@
 # Training outputs (checkpoints, metrics, plots, launch logs) — regenerable, never committed.
 runs/
+
+# The root .gitignore ignores any dir named results/. Re-include OUR curated evidence
+# folder (small, hand-picked result artifacts that back the paper — not raw run output).
+!results/
+!results/**

@@ -25,37 +25,42 @@ Make the pipeline trustworthy before we scale it up.
 The paper itself names single-seed as its most significant limitation (§5.5, §6.3.1).
 Reviewers will reject a headline claim from n=1. This phase converts anecdote → result.
 
-- [ ] Run **≥5 seeds** (target 8–10) × 3 conditions. ~15–30 runs. Each 50k-episode run is
-      CPU-only; budget wall-clock and consider dropping to 20–30k episodes if the plateau
-      is reached earlier (justify from the curves).
-- [ ] Report **mean ± std / 95% CI** on the four metrics over the final-100-episode window.
-- [ ] Plot learning curves with **confidence bands** across seeds (not a single trace).
-- [ ] **Significance test** the pairwise gaps (Welch's t-test or Mann–Whitney U on the
-      per-seed final metrics). State effect sizes, not just p-values.
-- [ ] Decide the story: does "selfish > cooperative" survive across seeds? If it narrows
-      or flips, that is *still* a paper — just a more honest one.
+- [x] Run **5 seeds** × 3 conditions at 30k episodes (15 runs). _(2026-07-29)_
+- [x] Report **mean ± std / 95% CI** on the metrics — see `results/phase1_multiseed.md`.
+- [x] Plot learning curves with **confidence bands** across seeds — `experiments/plot_curves.py`
+      → `results/figures/learning_curves.png`. _(2026-07-30)_
+- [x] **Significance test** — Welch t-tests + Cohen's d in `aggregate.py`. _(2026-07-29)_
+- [x] **Story decided:** *{selfish, mixed} ≫ cooperative*, p<0.001, d=4–6 for
+      selfish>cooperative. selfish vs mixed is small/mostly n.s. — claim the honest version,
+      not a strict 3-way ordering. _(2026-07-29)_
 
 ## Phase 2 — Deepen the contribution (pick 1–2, highest leverage first)
 
 A single gridworld with 3 discrete conditions is thin for a standalone paper. Add depth:
 
-- [ ] **α-sweep (highest leverage, low cost).** Mixed reward already has an `alpha`; sweep
-      α ∈ {0, 0.25, 0.5, 0.75, 1.0} (0 = cooperative, 1 = selfish). Turns 3 discrete bars
-      into a **curve** of cooperation/fairness/efficiency vs. selfishness. Far more
-      compelling and directly tests the mechanism.
-- [ ] **A non-circular cooperation metric** (`ISSUES.md` #4). Current score = efficiency ×
-      fairness (circular). Add an independent measure: e.g. a free-riding index (Gini of
-      per-agent contribution), counterfactual contribution, or territory-overlap.
+- [x] **α-sweep DONE** _(2026-07-30)_: 5 α × 3 seeds run; curve built
+      (`figures/alpha_sweep.png`, `results/phase2_alpha.md`). Steep rise α=0→0.25 then
+      plateau; knee at α≈0.25; endpoints byte-match standalone selfish/cooperative.
+- [x] **A non-circular cooperation metric DONE** _(2026-07-30, resolves `ISSUES.md` #4)_:
+      free-rider fraction + contribution Gini (`experiments/freerider.py`,
+      `results/freerider.md`). Cooperative free-rides significantly MORE than selfish
+      (0.307 vs 0.251, p=0.002, d=3.0) and mixed — direct evidence for the mechanism.
+      Added to paper as Table 2.
 - [ ] **Generalisation sweep** (optional): vary resource density and/or agent count to show
       the finding isn't specific to 25 resources / 4 agents / one map.
-- [ ] **Stronger baseline** (optional, higher cost): a centralised-critic learner (MAPPO)
-      or independent (non-shared-weight) policies, to show the effect isn't an artifact of
-      shared-weight learners (paper flags this in §5.5, §6.3.2–6.3.3).
+- [~] **Independent-policies ablation WIRED** _(2026-07-30)_: `agents/independent_ppo.py`
+      (one net per agent), `--independent` flag, `run_ablation.sh`. Verified: nets diverge,
+      shared-weight path unchanged (no regression). RUN PENDING (~5h) — then insert results
+      into the paper's threats-to-validity section.
+- [ ] **MAPPO centralised-critic baseline** (optional, higher cost) — bank for a full-paper
+      version.
 
 ## Phase 3 — Write the paper (~8 pages)
 
-- [ ] Draft in `paper/` following `paper/OUTLINE.md`, in the target venue's template.
-- [ ] Rebuild figures from Phase 1/2 data (confidence bands, α-curve).
+- [x] Draft in `paper/` — full first draft `paper/main.tex` (ACM sigconf) + `references.bib`,
+      all sections, Table 1 + Figs 2–4 with real numbers. _(2026-07-30)_ Venue: ALA@AAMAS
+      (8pg, non-archival, double-blind), targeting ALA 2027 (~Feb 2027 deadline).
+- [x] Rebuild figures from Phase 1/2 data (confidence bands, α-curve). _(2026-07-30)_
 - [ ] **Related work**: position against sequential social dilemmas (Leibo et al. 2017),
       MAPPO (Yu et al. 2022), Jain fairness, tragedy of the commons. Replace weak
       dissertation citations (Medium / ResearchGate figures — `ISSUES.md` #6).

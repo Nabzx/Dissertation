@@ -56,6 +56,8 @@ def train_headless(
     device: str = "cpu",
     seed: int = 0,
     cooperative_variant: str = "plus_own",
+    independent: bool = False,
+    alpha: float = 0.5,
 ) -> List[Dict]:
     # --- PPO requires PyTorch ---
     if not TORCH_AVAILABLE:
@@ -64,8 +66,23 @@ def train_headless(
     # --- seed everything (Python / NumPy / PyTorch) for reproducible, comparable runs ---
     set_global_seeds(seed)
 
-    # --- create run-specific directory names (seed included so runs never collide) ---
-    run_name = f"run_{num_episodes}_{reward_scheme}_seed{seed}"
+    # --- create run-specific directory names (seed + variant so runs never collide) ---
+    # the cooperative variant is part of the identity for cooperative runs, otherwise
+    # two cooperative runs (plus_own vs team_avg) would overwrite each other.
+    if reward_scheme in ("cooperative", "fully_cooperative"):
+        reward_tag = f"_{cooperative_variant}"
+    elif reward_scheme == "mixed":
+        reward_tag = f"_a{alpha:g}"  # e.g. _a0.25 ; keeps alpha-sweep runs distinct
+    else:
+        reward_tag = ""
+    arch_tag = "_indep" if independent else ""  # keep the ablation separate from shared-weight runs
+    # resource density is part of the identity too, otherwise a density sweep would write
+    # every density into the same directory. Guarded on the default (25) so all existing
+    # run names are unchanged.
+    density_tag = f"_r{num_resources}" if num_resources != 25 else ""
+    run_name = (
+        f"run_{num_episodes}_{reward_scheme}_seed{seed}{reward_tag}{arch_tag}{density_tag}"
+    )
 
     # adjust default paths to include run_name
     if checkpoint_dir == "checkpoints":
@@ -100,8 +117,14 @@ def train_headless(
         obs_dim += int(CommunicationLayer(env).config.max_ints)
     action_dim = int(env.action_spaces[env.agents[0]].n)
 
-    # --- initialise PPO agent ---
-    ppo_agent = PPOAgent(obs_dim=obs_dim, n_actions=action_dim, device=device)
+    # --- initialise PPO agent (shared-weight by default; independent = one net per agent) ---
+    if independent:
+        from agents.independent_ppo import IndependentPPO
+        ppo_agent = IndependentPPO(
+            agent_ids=list(env.agents), obs_dim=obs_dim, n_actions=action_dim, device=device
+        )
+    else:
+        ppo_agent = PPOAgent(obs_dim=obs_dim, n_actions=action_dim, device=device)
 
     metrics: List[Dict] = []
     last_episodes: List[Dict] = []  # store final 100 episodes for analysis
@@ -131,6 +154,7 @@ def train_headless(
             # the original episode sequence (0..N-1) exactly.
             episode_seed=seed * num_episodes + episode,
             cooperative_variant=cooperative_variant,
+            alpha=alpha,
         )
 
         # --- extract key metrics ---
@@ -227,7 +251,8 @@ def train_headless(
 
     # --- run post-training analysis automatically ---
     from analysis.post_training_analysis import run_post_training_analysis
-    run_post_training_analysis(run_name)
+    # pass this run's resource count so efficiency is normalised correctly under a density sweep
+    run_post_training_analysis(run_name, max_resources=num_resources)
 
     return metrics
 
@@ -335,6 +360,17 @@ def parse_args() -> argparse.Namespace:
         choices=["plus_own", "team_avg"],
         help="cooperative reward form: plus_own (frozen default) or team_avg (paper eq 2.7)",
     )
+    parser.add_argument(
+        "--alpha",
+        type=float,
+        default=0.5,
+        help="mixed-reward weight r=alpha*own+(1-alpha)*team_avg (1=selfish, 0=cooperative)",
+    )
+    parser.add_argument(
+        "--independent",
+        action="store_true",
+        help="one policy network per agent instead of shared weights (ablation)",
+    )
     return parser.parse_args()
 
 
@@ -358,4 +394,6 @@ if __name__ == "__main__":
         device=args.device,
         seed=args.seed,
         cooperative_variant=args.cooperative_variant,
+        alpha=args.alpha,
+        independent=args.independent,
     )
