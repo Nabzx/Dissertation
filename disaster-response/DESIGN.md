@@ -30,6 +30,15 @@ Victims carry a countdown; when it expires they die and are removed. Doing nothi
 destroys value, unlike the gridworld where idling merely forgoes it. This makes free-riding
 *visibly* harmful and gives a natural collective metric (lives lost).
 
+### 2b. Line of sight (added after v1)
+Walls and trees block vision. Without this, an agent in the street could see victims inside a
+building through the wall, which would make putting victims indoors purely cosmetic — no search
+would be needed. Rays are precomputed per window offset and visibility is cached per position
+(walls are static within an episode), so the per-step cost is negligible.
+
+An explicit **visibility channel** is included so an agent can distinguish "nothing there"
+from "cannot see there" — without it, unseen cells and empty cells are indistinguishable.
+
 ### 3. Multi-channel observations (replaces integer cell codes)
 The gridworld encoded everything as a single integer per cell (agent=2..N+1, obstacle=N+2),
 which cannot express severity, urgency or agency membership. Here each agent sees a
