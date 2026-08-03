@@ -376,10 +376,9 @@ a behaviour that a cooperative objective reliably induces.
 \paragraph{Threats to validity.} The shared-weight concern is addressed directly by our
 ablation, which shows the effect strengthens rather than disappears without parameter
 sharing, and the single-configuration concern by the density sweep, which finds the effect at
-every density tested. Generalisation across agent counts remains open: our environment
-encodes agents as distinct cell values and so caps at four, and whether the effect grows with
-team size (as the credit-assignment account would predict, since each agent's contribution to
-the team average shrinks as $1/N$) is untested. The cooperation score is not independent of
+every density tested. Generalisation across agent counts remains open: whether the effect grows
+with team size --- as the credit-assignment account predicts, since each agent's share of the
+team average shrinks as $1/N$ --- is untested here and is the most direct next experiment. The cooperation score is not independent of
 efficiency and fairness, which is why we also report the free-rider fraction and contribution
 Gini. We use $5$ seeds ($3$ for the $\alpha$-sweep, ablation and density runs); the ablation's effect sizes
 ($d>9$ on every metric) are large enough that this is not a practical concern. The most
