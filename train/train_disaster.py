@@ -78,12 +78,14 @@ def main():
                     help="mandate: r = alpha*own + (1-alpha)*team_avg")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--independent", action="store_true", help="one network per responder")
-    ap.add_argument("--grid-size", type=int, default=48)
-    ap.add_argument("--num-agents", type=int, default=8)
-    ap.add_argument("--num-agencies", type=int, default=2)
-    ap.add_argument("--num-victims", type=int, default=30)
-    ap.add_argument("--max-steps", type=int, default=400)
-    ap.add_argument("--view-size", type=int, default=7)
+    ap.add_argument("--encoder", default="mlp", choices=["mlp", "conv"],
+                    help="conv keeps the spatial structure of the observation")
+    ap.add_argument("--grid-size", type=int, default=60)
+    ap.add_argument("--num-agents", type=int, default=12)
+    ap.add_argument("--num-agencies", type=int, default=3)
+    ap.add_argument("--num-victims", type=int, default=45)
+    ap.add_argument("--max-steps", type=int, default=600)
+    ap.add_argument("--view-size", type=int, default=9)
     ap.add_argument("--layout", default="village", choices=["village", "open"])
     ap.add_argument("--checkpoint-every", type=int, default=2000)
     ap.add_argument("--out-root", default="disaster-response/runs")
@@ -95,7 +97,8 @@ def main():
     arch = "_indep" if args.independent else ""
     tag = f"_{args.tag}" if args.tag else ""
     if args.policy == "ppo":
-        run_name = f"disaster_{args.episodes}_a{args.alpha:g}_seed{args.seed}{arch}{tag}"
+        enc = "" if args.encoder == "mlp" else f"_{args.encoder}"
+        run_name = f"disaster_{args.episodes}_a{args.alpha:g}_seed{args.seed}{arch}{enc}{tag}"
     else:
         run_name = f"disaster_{args.policy}_{args.episodes}_seed{args.seed}{tag}"
 
@@ -120,6 +123,11 @@ def main():
         if args.independent:
             from agents.independent_ppo import IndependentPPO
             policy = IndependentPPO(agent_ids=list(env.agents), obs_dim=obs_dim, n_actions=N_ACTIONS)
+        elif args.encoder == "conv":
+            from agents.conv_ppo import ConvPPOAgent
+            from env.disaster_env import N_CHANNELS
+            policy = ConvPPOAgent(in_channels=N_CHANNELS, view_size=args.view_size,
+                                  n_actions=N_ACTIONS)
         else:
             policy = PPOAgent(obs_dim=obs_dim, n_actions=N_ACTIONS)
     elif args.policy == "random":
