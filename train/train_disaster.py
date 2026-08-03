@@ -80,6 +80,10 @@ def main():
     ap.add_argument("--independent", action="store_true", help="one network per responder")
     ap.add_argument("--encoder", default="mlp", choices=["mlp", "conv"],
                     help="conv keeps the spatial structure of the observation")
+    ap.add_argument("--entropy-start", type=float, default=0.03,
+                    help="entropy coefficient at the start of training")
+    ap.add_argument("--entropy-end", type=float, default=0.005,
+                    help="entropy coefficient at the end; annealed linearly")
     ap.add_argument("--grid-size", type=int, default=60)
     ap.add_argument("--num-agents", type=int, default=12)
     ap.add_argument("--num-agencies", type=int, default=3)
@@ -142,6 +146,16 @@ def main():
     rows: List[Dict] = []
     pbar = tqdm(range(args.episodes), desc=run_name, unit="ep")
     for ep in pbar:
+        # anneal exploration: search needs wide exploration early, commitment later
+        if args.policy == "ppo":
+            frac = ep / max(1, args.episodes - 1)
+            coef = args.entropy_start + frac * (args.entropy_end - args.entropy_start)
+            if hasattr(policy, "config"):
+                policy.config.entropy_coef = coef
+            elif hasattr(policy, "policies"):
+                for pol in policy.policies.values():
+                    pol.config.entropy_coef = coef
+
         m = run_disaster_episode(
             env=env,
             policy=policy,
