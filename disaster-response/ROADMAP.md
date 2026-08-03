@@ -21,8 +21,14 @@ fixed, exactly as in the companion gridworld study.
 
 ## The research question
 
-> **How does the credit structure of a response mandate shape emergent coordination between
-> independent agencies?**
+> **What actually makes independent response agencies coordinate better — and by how much?**
+
+Framed as **diagnosis → cure**, not state-of-the-art chasing. We first establish a coordination
+failure caused by the credit structure, then test a ladder of interventions and report which
+ones improve lives saved. Each intervention is compared against *the same system without it*,
+which is a fair and winnable comparison — we are not claiming to beat the MARL literature.
+
+The underlying variable remains the mandate design α.
 
 Four sub-questions, one per phase:
 
@@ -103,6 +109,25 @@ what an agent must carry across time.
 ### Phase 4 — Communication *(the headline)*
 A broadcast channel carrying victim sightings. Measure sharing rate, honesty, and collective
 outcome against α. Tests **H2**.
+
+### Phase 4b — Robustness / safety
+What happens when an agency **fails or withdraws** mid-response, or behaves purely selfishly
+while others cooperate? Does the system degrade gracefully or collapse? This is the safety
+dimension: a coordination scheme that only works when everyone behaves is not much use.
+
+### The intervention ladder (the paper's spine)
+Each rung is measured on **lives saved** and **severe-victim save rate**, against the same
+system without it:
+
+| Intervention | Question |
+|---|---|
+| Mandate redesign (α) | how much collective credit is needed? |
+| Communication | does sharing sightings help, and is it used? |
+| Role assignment | does specialisation help, emergent or imposed? |
+| Memory (recurrence) | does remembering victims help? |
+| Task claiming | does explicit allocation beat implicit? |
+
+Honest reporting includes the rungs that **don't** work.
 
 ### Phase 5 — Write-up
 Target the same venues as the gridworld paper (ALA, EWRL, Cooperative AI, ICBINB), or a
