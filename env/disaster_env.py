@@ -37,8 +37,9 @@ N_ACTIONS = 6
 
 # observation channels
 (CH_OBSTACLE, CH_VICTIM, CH_SEVERITY, CH_URGENCY,
- CH_OWN_AGENCY, CH_OTHER_AGENCY, CH_VISIBLE, CH_INDOOR) = range(8)
-N_CHANNELS = 8
+ CH_OWN_AGENCY, CH_OTHER_AGENCY, CH_VISIBLE, CH_INDOOR,
+ CH_SELF_TRACE, CH_ROW, CH_COL) = range(11)
+N_CHANNELS = 11
 
 Pos = Tuple[int, int]
 
@@ -77,6 +78,7 @@ class DisasterEnv(ParallelEnv):
         rubble_fraction: float = 0.035,
         indoor_victim_fraction: float = 0.75,
         line_of_sight: bool = True,
+        trace_decay: float = 0.985,
         seed: Optional[int] = None,
     ) -> None:
         if num_agents < 1:
@@ -98,6 +100,7 @@ class DisasterEnv(ParallelEnv):
         self.rubble_fraction = rubble_fraction
         self.indoor_victim_fraction = indoor_victim_fraction
         self.line_of_sight = line_of_sight
+        self.trace_decay = trace_decay
         self.seed = seed
 
         self.agents: List[str] = [f"responder_{i}" for i in range(num_agents)]
@@ -126,6 +129,7 @@ class DisasterEnv(ParallelEnv):
         self.doors: Set[Pos] = set()
         self.victims: List[Victim] = []
         self.agent_positions: Dict[str, Pos] = {}
+        self.trace: Dict[str, np.ndarray] = {}   # per-agent decaying "I have searched here"
         self.step_count = 0
 
         # metrics
@@ -175,6 +179,8 @@ class DisasterEnv(ParallelEnv):
         self.step_count = 0
         self.victims = []
         self.agent_positions = {}
+        self.trace = {a: np.zeros((self.grid_size, self.grid_size), dtype=np.float32)
+                      for a in self.agents}
         self._vis_cache = {}
         self.rescues = {a: 0.0 for a in self.agents}
         self.rescue_counts = {a: 0 for a in self.agents}
@@ -221,6 +227,7 @@ class DisasterEnv(ParallelEnv):
             occupied.add(pos)
             start_pool.remove(pos)
             self.agent_positions[a] = pos
+            self.trace[a][pos] = 1.0
 
         return self._get_obs(), {a: {} for a in self.agents}
 
@@ -248,6 +255,10 @@ class DisasterEnv(ParallelEnv):
                 self.agent_positions[a] = self._move(self.agent_positions[a], act)
             elif act == STAY:
                 self.idle_steps[a] += 1
+            # search memory: decay everywhere, refresh where the agent now stands. Without
+            # this the agent cannot tell a room it has already cleared from an unvisited one.
+            self.trace[a] *= self.trace_decay
+            self.trace[a][self.agent_positions[a]] = 1.0
 
         rescuers_at: Dict[Pos, List[str]] = {}
         for a in self.agents:
@@ -320,7 +331,12 @@ class DisasterEnv(ParallelEnv):
             mine = self.agency_of[a]
             w = np.zeros((N_CHANNELS, self.view_size, self.view_size), dtype=np.float32)
             w[CH_OBSTACLE] = 1.0   # off-map reads as blocked
+            # global position, so the agent knows where it is on the map rather than only
+            # what is in front of it - constant across the window, standard practice.
+            w[CH_ROW] = ar / max(1, g - 1)
+            w[CH_COL] = ac / max(1, g - 1)
 
+            trace = self.trace[a]
             vis = self._visible((ar, ac)) if self.line_of_sight else None
             for i in range(self.view_size):
                 for j in range(self.view_size):
@@ -328,6 +344,9 @@ class DisasterEnv(ParallelEnv):
                     rr, cc = ar + dr, ac + dc
                     if not (0 <= rr < g and 0 <= cc < g):
                         continue
+                    # own search memory is recalled regardless of current visibility: you
+                    # remember having searched a room even when you can no longer see it.
+                    w[CH_SELF_TRACE, i, j] = trace[rr, cc]
                     seen = True if vis is None else vis[(dr, dc)]
                     w[CH_VISIBLE, i, j] = 1.0 if seen else 0.0
                     if not seen:
