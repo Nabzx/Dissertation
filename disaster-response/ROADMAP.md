@@ -89,7 +89,10 @@ victims die on a countdown; multi-channel observations).
 **1b — wire to PPO.** Observations are 6×7×7, so the policy needs an encoder. Start with a
 flatten (294 → MLP) for speed; test a small conv later as an ablation.
 
-**1c — baselines.** Random and greedy-nearest-victim policies, so we can prove learning.
+**1c — baselines.** Three rungs: random (floor), greedy (decentralised, uncoordinated), and
+**coordinated** (privileged central planner with BFS — the ceiling, bounding what coordination
+could achieve). Plus deterministic evaluation on held-out seeds, so final numbers are not
+contaminated by training-time exploration noise.
 
 **1d — the α sweep.** α ∈ {0, 0.25, 0.5, 0.75, 1} × 3 seeds.
 *Outcomes:* lives saved, **severe vs minor save rate (tests H1)**, effort share, idle rate.
