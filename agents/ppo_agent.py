@@ -129,6 +129,16 @@ class PPOAgent:
         value_estimate = 0.0
         return action, log_prob, value_estimate
 
+    def select_action_greedy(self, obs: np.ndarray) -> int:
+        # deterministic (argmax) action, for evaluation without exploration noise.
+        # Training always uses select_action; this never affects learning.
+        if TORCH_AVAILABLE:
+            obs_t = torch.from_numpy(obs.astype(np.float32)).to(self.device_t)
+            with torch.no_grad():
+                logits, _ = self.model(obs_t.unsqueeze(0))
+            return int(torch.argmax(logits, dim=-1).item())
+        return int(np.random.randint(self.n_actions))
+
     def get_value(self, obs: np.ndarray) -> float:
         # value estimate V(s) only, no action sampled.
         # used to bootstrap GAE when an episode ends by truncation (step limit)
