@@ -41,6 +41,11 @@ N_ACTIONS = 6
  CH_SELF_TRACE, CH_ROW, CH_COL) = range(11)
 N_CHANNELS = 11
 
+# communication channels, appended only when communication is enabled so that non-comm runs
+# keep an identical observation to every earlier experiment.
+CH_REPORT_DR, CH_REPORT_DC, CH_REPORT_ACTIVE = 11, 12, 13
+N_CHANNELS_COMM = 14
+
 Pos = Tuple[int, int]
 
 
@@ -79,6 +84,8 @@ class DisasterEnv(ParallelEnv):
         indoor_victim_fraction: float = 0.75,
         line_of_sight: bool = True,
         trace_decay: float = 0.985,
+        communication: bool = False,
+        report_ttl: int = 60,
         seed: Optional[int] = None,
     ) -> None:
         if num_agents < 1:
@@ -101,6 +108,9 @@ class DisasterEnv(ParallelEnv):
         self.indoor_victim_fraction = indoor_victim_fraction
         self.line_of_sight = line_of_sight
         self.trace_decay = trace_decay
+        self.communication = communication
+        self.report_ttl = report_ttl
+        self.n_channels = N_CHANNELS_COMM if communication else N_CHANNELS
         self.seed = seed
 
         self.agents: List[str] = [f"responder_{i}" for i in range(num_agents)]
@@ -113,7 +123,8 @@ class DisasterEnv(ParallelEnv):
 
         self.action_spaces = {a: Discrete(N_ACTIONS) for a in self.agents}
         self.observation_spaces = {
-            a: Box(low=0.0, high=1.0, shape=(N_CHANNELS, view_size, view_size), dtype=np.float32)
+            a: Box(low=0.0, high=1.0, shape=(self.n_channels, view_size, view_size),
+                   dtype=np.float32)
             for a in self.agents
         }
 
@@ -141,6 +152,10 @@ class DisasterEnv(ParallelEnv):
         self.severe_lost = self.minor_lost = 0
         self.severe_total = self.minor_total = 0
         self.joint_rescues = 0
+        self.board: List[Dict] = []          # published victim sightings
+        self.broadcasts: Dict[str, int] = {}  # how often each agent chose to broadcast
+        self.broadcast_ops: Dict[str, int] = {}  # chances to broadcast (saw an unreported victim)
+        self.reports_acted_on = 0
 
         if seed is not None:
             np.random.seed(seed)
@@ -191,6 +206,10 @@ class DisasterEnv(ParallelEnv):
         self.severe_lost = self.minor_lost = 0
         self.severe_total = self.minor_total = 0
         self.joint_rescues = 0
+        self.board = []
+        self.broadcasts = {a: 0 for a in self.agents}
+        self.broadcast_ops = {a: 0 for a in self.agents}
+        self.reports_acted_on = 0
 
         if self.layout == "village":
             self.terrain, self.buildings, self.interior, self.doors = generate_village(
@@ -252,11 +271,23 @@ class DisasterEnv(ParallelEnv):
             return pos
         return (r, c) if self.passable[r, c] else pos
 
+    @staticmethod
+    def _split_action(v):
+        # actions may be a bare move, or (move, broadcast) when communication is enabled
+        if isinstance(v, (tuple, list, np.ndarray)):
+            return int(v[0]), int(v[1])
+        return int(v), 0
+
     def step(self, actions: Dict[str, int]):
         raw = {a: 0.0 for a in self.agents}
+        moves = {a: self._split_action(actions[a])[0] for a in self.agents}
+        broadcasts = {a: self._split_action(actions[a])[1] for a in self.agents}
+
+        if self.communication:
+            self._handle_broadcasts(broadcasts)
 
         for a in self.agents:
-            act = int(actions[a])
+            act = moves[a]
             if act in (UP, DOWN, LEFT, RIGHT):
                 self.agent_positions[a] = self._move(self.agent_positions[a], act)
             elif act == STAY:
@@ -268,7 +299,7 @@ class DisasterEnv(ParallelEnv):
 
         rescuers_at: Dict[Pos, List[str]] = {}
         for a in self.agents:
-            if int(actions[a]) == RESCUE:
+            if moves[a] == RESCUE:
                 rescuers_at.setdefault(self.agent_positions[a], []).append(a)
 
         saved: List[Victim] = []
@@ -280,6 +311,8 @@ class DisasterEnv(ParallelEnv):
                     raw[a] += value
                     self.rescue_counts[a] += 1
                     self.rescues[a] += value
+                if self.communication and any(e["pos"] == v.pos for e in self.board):
+                    self.reports_acted_on += 1
                 saved.append(v)
                 self.lives_saved += 1
                 if v.severity == 2:
@@ -304,6 +337,13 @@ class DisasterEnv(ParallelEnv):
                 alive.append(v)
         self.victims = alive
 
+        if self.communication:
+            live = {v.pos for v in self.victims}
+            for e in self.board:
+                e["ttl"] -= 1
+            self.board = [e for e in self.board
+                          if e["ttl"] > 0 and e["pos"] in live]
+
         self.step_count += 1
         done = len(self.victims) == 0
         truncated = self.step_count >= self.max_steps
@@ -311,6 +351,43 @@ class DisasterEnv(ParallelEnv):
         truncations = {a: (truncated and not done) for a in self.agents}
         infos = {a: {"raw_reward": raw[a]} for a in self.agents}
         return self._get_obs(), raw, terminations, truncations, infos
+
+    # ---------- communication ----------
+    def _handle_broadcasts(self, broadcasts: Dict[str, int]) -> None:
+        """An agent that chooses to broadcast publishes the most urgent victim it can
+        currently see and that is not already on the board. Broadcasting is a separate
+        decision from movement, so declining to broadcast costs nothing - any reduction in
+        sharing is therefore attributable to incentive, not to opportunity cost."""
+        reported = {e["pos"] for e in self.board}
+        for a in self.agents:
+            visible = self._visible_victims(a)
+            candidates = [v for v in visible if v.pos not in reported]
+            if not candidates:
+                continue
+            # the agent HAD something worth sharing: count the opportunity
+            self.broadcast_ops[a] += 1
+            if not broadcasts.get(a):
+                continue
+            v = min(candidates, key=lambda x: x.ttl)   # most urgent first
+            self.board.append({
+                "pos": v.pos, "severity": v.severity,
+                "ttl": self.report_ttl, "sender": a, "agency": self.agency_of[a],
+            })
+            reported.add(v.pos)
+            self.broadcasts[a] += 1
+
+    def _visible_victims(self, agent_id: str) -> List[Victim]:
+        ar, ac = self.agent_positions[agent_id]
+        half = self.view_size // 2
+        vis = self._visible((ar, ac)) if self.line_of_sight else None
+        out = []
+        for v in self.victims:
+            dr, dc = v.row - ar, v.col - ac
+            if abs(dr) > half or abs(dc) > half:
+                continue
+            if vis is None or vis.get((dr, dc), False):
+                out.append(v)
+        return out
 
     # ---------- observation ----------
     def _visible(self, pos: Pos) -> Dict[Tuple[int, int], bool]:
@@ -335,7 +412,7 @@ class DisasterEnv(ParallelEnv):
         for a in self.agents:
             ar, ac = self.agent_positions[a]
             mine = self.agency_of[a]
-            w = np.zeros((N_CHANNELS, self.view_size, self.view_size), dtype=np.float32)
+            w = np.zeros((self.n_channels, self.view_size, self.view_size), dtype=np.float32)
             w[CH_OBSTACLE] = 1.0   # off-map reads as blocked
             # global position, so the agent knows where it is on the map rather than only
             # what is in front of it - constant across the window, standard practice.
@@ -343,6 +420,25 @@ class DisasterEnv(ParallelEnv):
             w[CH_COL] = ac / max(1, g - 1)
 
             trace = self.trace[a]
+            if self.communication:
+                # nearest board entry the agent cannot already see, as a bearing. A map
+                # channel would be useless for reports outside the window.
+                best, best_d = None, None
+                for e in self.board:
+                    er, ec = e["pos"]
+                    d = abs(er - ar) + abs(ec - ac)
+                    if best_d is None or d < best_d:
+                        best, best_d = e, d
+                if best is not None and best_d > 0:
+                    er, ec = best["pos"]
+                    scale = max(1, self.grid_size - 1)
+                    # map [-1, 1] into [0, 1]: the observation space is unit-bounded
+                    w[CH_REPORT_DR] = 0.5 + 0.5 * float(np.clip((er - ar) / scale, -1, 1))
+                    w[CH_REPORT_DC] = 0.5 + 0.5 * float(np.clip((ec - ac) / scale, -1, 1))
+                    w[CH_REPORT_ACTIVE] = 1.0
+                else:
+                    w[CH_REPORT_DR] = 0.5
+                    w[CH_REPORT_DC] = 0.5
             vis = self._visible((ar, ac)) if self.line_of_sight else None
             for i in range(self.view_size):
                 for j in range(self.view_size):
@@ -397,6 +493,16 @@ class DisasterEnv(ParallelEnv):
             "value_per_agent": dict(self.rescues),
             "idle_rate": {a: self.idle_steps[a] / max(1, self.step_count) for a in self.agents},
             "steps": self.step_count,
+            # H2: sharing rate is broadcasts made / chances to broadcast, so it measures the
+            # *decision* to share rather than how often a victim happened to be in view.
+            "broadcasts": dict(self.broadcasts),
+            "broadcast_ops": dict(self.broadcast_ops),
+            "sharing_rate": (
+                sum(self.broadcasts.values()) / max(1, sum(self.broadcast_ops.values()))
+                if self.communication else 0.0
+            ),
+            "reports_acted_on": self.reports_acted_on,
+            "reports_published": len(self.board),
         }
 
     def agency_totals(self) -> Dict[int, float]:
