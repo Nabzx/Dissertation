@@ -70,7 +70,8 @@ def run_disaster_episode(
                 step_obs[a] = flat
             else:
                 act = policy.act(raw_obs[a], a)
-            actions[a] = int(act)
+            # comm policies return (move, broadcast); the env accepts either form
+            actions[a] = act if isinstance(act, (tuple, list)) else int(act)
 
         raw_next, raw_rewards, terminations, truncations, _ = env.step(actions)
 
