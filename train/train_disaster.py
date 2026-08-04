@@ -44,7 +44,7 @@ CSV_FIELDS = [
     "episode", "lives_saved", "lives_lost", "victims_remaining", "save_rate",
     "severe_save_rate", "minor_save_rate", "severe_saved", "minor_saved",
     "joint_rescues", "mean_idle_rate", "steps", "total_shaped_reward",
-    "policy_loss", "value_loss", "entropy", "approx_kl",
+    "policy_loss", "value_loss", "entropy", "approx_kl", "sharing_rate", "reports_acted_on",
 ]
 
 
@@ -68,6 +68,8 @@ def _row(m: Dict) -> Dict:
         "value_loss": round(p.get("value_loss", 0.0), 5),
         "entropy": round(p.get("entropy", 0.0), 5),
         "approx_kl": round(p.get("approx_kl", 0.0), 6),
+        "sharing_rate": round(m.get("sharing_rate", 0.0), 5),
+        "reports_acted_on": m.get("reports_acted_on", 0),
     }
 
 
@@ -98,16 +100,19 @@ def main():
                     help="agency: alpha weights the agency mean; agent: weights own reward")
     ap.add_argument("--eval-episodes", type=int, default=100,
                     help="deterministic evaluation episodes on held-out seeds after training")
+    ap.add_argument("--communication", action="store_true",
+                    help="enable the broadcast channel and a two-headed policy (Phase 4)")
     ap.add_argument("--tag", default="")
     args = ap.parse_args()
 
     set_global_seeds(args.seed)
 
     arch = "_indep" if args.independent else ""
+    comm = "_comm" if args.communication else ""
     tag = f"_{args.tag}" if args.tag else ""
     if args.policy == "ppo":
         enc = "" if args.encoder == "mlp" else f"_{args.encoder}"
-        run_name = f"disaster_{args.episodes}_a{args.alpha:g}_seed{args.seed}{arch}{enc}{tag}"
+        run_name = f"disaster_{args.episodes}_a{args.alpha:g}_seed{args.seed}{arch}{enc}{comm}{tag}"
     else:
         run_name = f"disaster_{args.policy}_{args.episodes}_seed{args.seed}{tag}"
 
@@ -123,13 +128,17 @@ def main():
         max_steps=args.max_steps,
         view_size=args.view_size,
         layout=args.layout,
+        communication=args.communication,
     )
 
     obs_dim = int(np.prod(env.observation_spaces[env.agents[0]].shape))
     if args.policy == "ppo":
         if not TORCH_AVAILABLE:
             raise RuntimeError("PPO requires PyTorch.")
-        if args.independent:
+        if args.communication:
+            from agents.comm_ppo import CommPPOAgent
+            policy = CommPPOAgent(obs_dim=obs_dim, n_actions=N_ACTIONS)
+        elif args.independent:
             from agents.independent_ppo import IndependentPPO
             policy = IndependentPPO(agent_ids=list(env.agents), obs_dim=obs_dim, n_actions=N_ACTIONS)
         elif args.encoder == "gru":
@@ -209,6 +218,7 @@ def main():
         "mean_minor_save_rate": float(np.mean([r["minor_save_rate"] for r in tail])),
         "mean_joint_rescues": float(np.mean([r["joint_rescues"] for r in tail])),
         "mean_idle_rate": float(np.mean([r["mean_idle_rate"] for r in tail])),
+        "mean_sharing_rate": float(np.mean([r["sharing_rate"] for r in tail])),
     }
     # deterministic evaluation on held-out seeds: training metrics carry exploration noise,
     # so final numbers should not come from the training episodes themselves.
@@ -228,6 +238,7 @@ def main():
         summary["eval_severe_save_rate"] = float(np.mean([r["severe_save_rate"] for r in ev]))
         summary["eval_minor_save_rate"] = float(np.mean([r["minor_save_rate"] for r in ev]))
         summary["eval_joint_rescues"] = float(np.mean([r["joint_rescues"] for r in ev]))
+        summary["eval_sharing_rate"] = float(np.mean([r["sharing_rate"] for r in ev]))
 
     (out_dir / "summary.json").write_text(json.dumps(summary, indent=2))
 
