@@ -35,7 +35,10 @@ def run_disaster_episode(
     obs = flatten_obs(raw_obs)
 
     learning = getattr(policy, "is_learning", True)
-    multi = getattr(policy, "is_multi", False)   # IndependentPPO exposes this
+    multi = getattr(policy, "is_multi", False)      # IndependentPPO exposes this
+    recurrent = hasattr(policy, "reset_hidden")     # RecurrentPPOAgent
+    if recurrent:
+        policy.reset_hidden()                       # memory must not leak across episodes
     if learning and train_policy:
         policy.reset_buffer()
     if not learning:
@@ -53,11 +56,12 @@ def run_disaster_episode(
         for a in env.agents:
             flat = obs[a]
             if learning:
+                needs_id = multi or recurrent
                 if deterministic:
-                    act = (policy.select_action_greedy(flat, a) if multi
+                    act = (policy.select_action_greedy(flat, a) if needs_id
                            else policy.select_action_greedy(flat))
                     lp, val = 0.0, 0.0
-                elif multi:
+                elif needs_id:
                     act, lp, val = policy.select_action(flat, a)
                 else:
                     act, lp, val = policy.select_action(flat)
@@ -110,7 +114,8 @@ def run_disaster_episode(
             last_value = {}
             for a in env.agents:
                 last_value[a] = (
-                    policy.get_value(obs[a], a) if multi else policy.get_value(obs[a])
+                    policy.get_value(obs[a], a) if (multi or recurrent)
+                    else policy.get_value(obs[a])
                 )
             last_done = False
         try:
