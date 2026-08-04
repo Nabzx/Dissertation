@@ -79,7 +79,7 @@ def main():
                     help="mandate: r = alpha*own + (1-alpha)*team_avg")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--independent", action="store_true", help="one network per responder")
-    ap.add_argument("--encoder", default="mlp", choices=["mlp", "conv"],
+    ap.add_argument("--encoder", default="mlp", choices=["mlp", "conv", "gru"],
                     help="conv keeps the spatial structure of the observation")
     ap.add_argument("--entropy-start", type=float, default=0.03,
                     help="entropy coefficient at the start of training")
@@ -132,6 +132,9 @@ def main():
         if args.independent:
             from agents.independent_ppo import IndependentPPO
             policy = IndependentPPO(agent_ids=list(env.agents), obs_dim=obs_dim, n_actions=N_ACTIONS)
+        elif args.encoder == "gru":
+            from agents.recurrent_ppo import RecurrentPPOAgent
+            policy = RecurrentPPOAgent(obs_dim=obs_dim, n_actions=N_ACTIONS)
         elif args.encoder == "conv":
             from agents.conv_ppo import ConvPPOAgent
             from env.disaster_env import N_CHANNELS
