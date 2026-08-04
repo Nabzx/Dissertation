@@ -99,7 +99,12 @@ def main():
     ap.add_argument("--credit", default="agency", choices=["agency", "agent"],
                     help="agency: alpha weights the agency mean; agent: weights own reward")
     ap.add_argument("--eval-episodes", type=int, default=100,
-                    help="deterministic evaluation episodes on held-out seeds after training")
+                    help="evaluation episodes on held-out seeds after training")
+    ap.add_argument("--eval-deterministic", action="store_true",
+                    help="argmax actions at evaluation. OFF by default: in a search task a "
+                         "deterministic policy gets stuck in loops that a stochastic one "
+                         "escapes, which understates performance by ~40% (see "
+                         "results/eval_mode.md)")
     ap.add_argument("--communication", action="store_true",
                     help="enable the broadcast channel and a two-headed policy (Phase 4)")
     ap.add_argument("--tag", default="")
@@ -229,7 +234,8 @@ def main():
             m = run_disaster_episode(
                 env=env, policy=policy, episode_num=i, alpha=args.alpha,
                 train_policy=False, episode_seed=EVAL_BASE + args.seed * args.eval_episodes + i,
-                credit=args.credit, deterministic=(args.policy == "ppo"),
+                credit=args.credit,
+                deterministic=(args.eval_deterministic and args.policy == "ppo"),
             )
             ev.append(_row(m))
         summary["eval_episodes"] = len(ev)
