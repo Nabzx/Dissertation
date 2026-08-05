@@ -103,8 +103,11 @@ def main():
     ap.add_argument("--eval-deterministic", action="store_true",
                     help="argmax actions at evaluation. OFF by default: in a search task a "
                          "deterministic policy gets stuck in loops that a stochastic one "
-                         "escapes, which understates performance by ~40% (see "
+                         "escapes, which understates performance by ~40%% (see "
                          "results/eval_mode.md)")
+    ap.add_argument("--roles", action="store_true",
+                    help="heterogeneous responders: medic (clears severe alone) / scout "
+                         "(long-range victim sensing) / standard (Phase 2)")
     ap.add_argument("--communication", action="store_true",
                     help="enable the broadcast channel and a two-headed policy (Phase 4)")
     ap.add_argument("--tag", default="")
@@ -114,10 +117,11 @@ def main():
 
     arch = "_indep" if args.independent else ""
     comm = "_comm" if args.communication else ""
+    rol = "_roles" if args.roles else ""
     tag = f"_{args.tag}" if args.tag else ""
     if args.policy == "ppo":
         enc = "" if args.encoder == "mlp" else f"_{args.encoder}"
-        run_name = f"disaster_{args.episodes}_a{args.alpha:g}_seed{args.seed}{arch}{enc}{comm}{tag}"
+        run_name = f"disaster_{args.episodes}_a{args.alpha:g}_seed{args.seed}{arch}{enc}{comm}{rol}{tag}"
     else:
         run_name = f"disaster_{args.policy}_{args.episodes}_seed{args.seed}{tag}"
 
@@ -134,6 +138,7 @@ def main():
         view_size=args.view_size,
         layout=args.layout,
         communication=args.communication,
+        roles=args.roles,
     )
 
     obs_dim = int(np.prod(env.observation_spaces[env.agents[0]].shape))
