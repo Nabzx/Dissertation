@@ -46,6 +46,12 @@ N_CHANNELS = 11
 CH_REPORT_DR, CH_REPORT_DC, CH_REPORT_ACTIVE = 11, 12, 13
 N_CHANNELS_COMM = 14
 
+# role channels, appended only when roles are enabled (Phase 2), so runs without roles keep
+# an identical observation to every earlier experiment.
+ROLE_STANDARD, ROLE_MEDIC, ROLE_SCOUT = 0, 1, 2
+ROLE_NAMES = {ROLE_STANDARD: "standard", ROLE_MEDIC: "medic", ROLE_SCOUT: "scout"}
+N_ROLE_CHANNELS = 4        # is_medic, is_scout, scout bearing dr, scout bearing dc
+
 Pos = Tuple[int, int]
 
 
@@ -86,6 +92,9 @@ class DisasterEnv(ParallelEnv):
         trace_decay: float = 0.985,
         communication: bool = False,
         report_ttl: int = 60,
+        roles: bool = False,
+        medic_strength: int = 2,
+        scout_radius: int = 16,
         seed: Optional[int] = None,
     ) -> None:
         if num_agents < 1:
@@ -110,7 +119,12 @@ class DisasterEnv(ParallelEnv):
         self.trace_decay = trace_decay
         self.communication = communication
         self.report_ttl = report_ttl
-        self.n_channels = N_CHANNELS_COMM if communication else N_CHANNELS
+        self.roles = roles
+        self.medic_strength = medic_strength
+        self.scout_radius = scout_radius
+        base = N_CHANNELS_COMM if communication else N_CHANNELS
+        self._role_offset = base          # role channels sit after the comm channels
+        self.n_channels = base + (N_ROLE_CHANNELS if roles else 0)
         self.seed = seed
 
         self.agents: List[str] = [f"responder_{i}" for i in range(num_agents)]
@@ -119,6 +133,14 @@ class DisasterEnv(ParallelEnv):
         per = int(np.ceil(num_agents / num_agencies))
         self.agency_of: Dict[str, int] = {
             a: min(i // per, num_agencies - 1) for i, a in enumerate(self.agents)
+        }
+
+        # roles cycle standard/medic/scout so every agency holds a comparable mix. The
+        # question is which victims each role goes to, not who happens to hold which role.
+        _cycle = [ROLE_STANDARD, ROLE_MEDIC, ROLE_SCOUT]
+        self.role_of: Dict[str, int] = {
+            a: (_cycle[i % len(_cycle)] if roles else ROLE_STANDARD)
+            for i, a in enumerate(self.agents)
         }
 
         self.action_spaces = {a: Discrete(N_ACTIONS) for a in self.agents}
@@ -305,7 +327,10 @@ class DisasterEnv(ParallelEnv):
         saved: List[Victim] = []
         for v in self.victims:
             crew = rescuers_at.get(v.pos, [])
-            if len(crew) >= v.severity:
+            strength = sum(
+                self.medic_strength if self.role_of[a] == ROLE_MEDIC else 1 for a in crew
+            )
+            if strength >= v.severity:
                 value = self.severe_value if v.severity == 2 else 1.0
                 for a in crew:                       # participation is the unit of effort
                     raw[a] += value
@@ -420,6 +445,25 @@ class DisasterEnv(ParallelEnv):
             w[CH_COL] = ac / max(1, g - 1)
 
             trace = self.trace[a]
+            if self.roles:
+                off = self._role_offset
+                role = self.role_of[a]
+                w[off + 0] = 1.0 if role == ROLE_MEDIC else 0.0
+                w[off + 1] = 1.0 if role == ROLE_SCOUT else 0.0
+                # a scout's advantage is range: it senses victims well beyond its view window,
+                # so it can direct effort rather than only rescue what it stumbles upon.
+                w[off + 2] = 0.5
+                w[off + 3] = 0.5
+                if role == ROLE_SCOUT:
+                    best, bd = None, None
+                    for v in self.victims:
+                        d = abs(v.row - ar) + abs(v.col - ac)
+                        if d <= self.scout_radius and (bd is None or d < bd):
+                            best, bd = v, d
+                    if best is not None and bd:
+                        sc = max(1, self.scout_radius)
+                        w[off + 2] = 0.5 + 0.5 * float(np.clip((best.row - ar) / sc, -1, 1))
+                        w[off + 3] = 0.5 + 0.5 * float(np.clip((best.col - ac) / sc, -1, 1))
             if self.communication:
                 # nearest board entry the agent cannot already see, as a bearing. A map
                 # channel would be useless for reports outside the window.
@@ -503,6 +547,11 @@ class DisasterEnv(ParallelEnv):
             ),
             "reports_acted_on": self.reports_acted_on,
             "reports_published": len(self.board),
+            "roles": {a: ROLE_NAMES[self.role_of[a]] for a in self.agents},
+            "value_by_role": {
+                ROLE_NAMES[r]: sum(self.rescues[a] for a in self.agents if self.role_of[a] == r)
+                for r in (ROLE_STANDARD, ROLE_MEDIC, ROLE_SCOUT)
+            },
         }
 
     def agency_totals(self) -> Dict[int, float]:
