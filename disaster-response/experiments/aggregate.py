@@ -44,8 +44,11 @@ PRETTY = {
 
 
 def discover(root: Path, episodes: int) -> Dict[float, List[dict]]:
+    """Prefer eval_stochastic.json: the summary's own eval used argmax actions, which
+    understates performance by ~40% in this search task (see results/eval_mode.md)."""
     groups: Dict[float, List[dict]] = {}
     for d in sorted(root.glob(f"disaster_{episodes}_a*")):
+        stoch = d / "eval_stochastic.json"
         s = d / "summary.json"
         if not s.is_file():
             continue
@@ -53,6 +56,17 @@ def discover(root: Path, episodes: int) -> Dict[float, List[dict]]:
         if not m:
             continue
         data = json.loads(s.read_text())
+        if stoch.is_file():
+            ev = json.loads(stoch.read_text())
+            # overwrite the headline metrics with the stochastic evaluation
+            data["mean_lives_saved"] = ev["lives_saved"]
+            data["mean_save_rate"] = ev["save_rate"]
+            data["mean_severe_save_rate"] = ev["severe_save_rate"]
+            data["mean_minor_save_rate"] = ev["minor_save_rate"]
+            data["mean_joint_rescues"] = ev["joint_rescues"]
+            data["_eval"] = "stochastic"
+        else:
+            data["_eval"] = "training-window"
         data["_variant"] = m.group(3)
         groups.setdefault(float(m.group(1)), []).append(data)
     return groups
