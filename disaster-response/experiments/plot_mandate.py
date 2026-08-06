@@ -65,7 +65,7 @@ def main():
         ax1.fill_between(alphas, m - s, m + s, color=colour, alpha=0.16)
     ax1.set_xlabel(r"$\alpha$   (0 = collective credit,  1 = individual credit)")
     ax1.set_ylabel("Save rate")
-    ax1.set_title("H1: does individual credit suppress cooperative rescues?")
+    ax1.set_title("Individual credit improves solo rescues only")
     ax1.set_xticks(alphas)
     ax1.grid(alpha=0.25)
     ax1.legend(fontsize=9)
